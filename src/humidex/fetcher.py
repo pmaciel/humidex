@@ -8,7 +8,7 @@ import math
 import os
 import tempfile
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -152,6 +152,7 @@ class ECMWFFetcher(WeatherFetcher):
                 _do_fetch,
                 max_retries=self._config.retry_max,
                 base_backoff=self._config.retry_backoff,
+                no_retry=(InvalidStepError, DataParseError),
             )
         except (InvalidStepError, DataParseError):
             raise
@@ -241,6 +242,10 @@ class ECMWFFetcher(WeatherFetcher):
         if not isinstance(valid_time, datetime):
             msg = "ECMWF result missing valid_time"
             raise DataParseError(msg)
+
+        # ECMWF open data returns naive datetimes (implicitly UTC); make explicit.
+        if valid_time.tzinfo is None:
+            valid_time = valid_time.replace(tzinfo=timezone.utc)
 
         return WeatherData(
             temperature_c=round(temp_c, 1),

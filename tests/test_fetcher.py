@@ -203,6 +203,39 @@ class TestECMWFFetcher:
                     step=0,
                 )
 
+    def test_parse_grib_naive_datetime_coerced_to_utc(self, config: Config) -> None:
+        """_parse_grib must coerce a naive datetime to UTC (ECMWF returns naive)."""
+        fetcher = ECMWFFetcher(config=config)
+        location = Location(name="Bangkok", latitude=13.7563, longitude=100.5018)
+
+        t2m_var = MagicMock()
+        t2m_var.isel.return_value = MagicMock(values=np.array(298.15))
+        d2m_var = MagicMock()
+        d2m_var.isel.return_value = MagicMock(values=np.array(293.15))
+
+        mock_ds = MagicMock()
+        mock_ds.__enter__.return_value = mock_ds
+        mock_ds.__exit__.return_value = False
+        mock_ds.__getitem__.side_effect = lambda key: {
+            "latitude": MagicMock(values=np.array([13.0, 14.0])),
+            "longitude": MagicMock(values=np.array([100.0, 101.0])),
+            "t2m": t2m_var,
+            "d2m": d2m_var,
+        }[key]
+
+        naive_dt = datetime(2026, 5, 5, 12, 0)  # no tzinfo — as ECMWF returns
+        with patch("humidex.fetcher.xr.open_dataset", return_value=mock_ds):
+            result = fetcher._parse_grib(
+                grib_path=MagicMock(),
+                location=location,
+                valid_time=naive_dt,
+                step=0,
+            )
+
+        assert result.valid_time is not None
+        assert result.valid_time.tzinfo is not None
+        assert result.valid_time == naive_dt.replace(tzinfo=timezone.utc)
+
     def test_fetch_and_parse_missing_valid_time_raises(self, config: Config) -> None:
         """_fetch_and_parse propagates DataParseError when result.datetime is None."""
         mock_client = MagicMock()
