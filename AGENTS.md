@@ -1,233 +1,300 @@
-# AGENTS.md - Agent Team Coordination
+# AGENTS.md — Agent Team Coordination
 
-This file defines the agent team structure, roles, responsibilities, and workflows for implementing Python projects.
+This file defines the agent team, their roles, and the workflow for implementing Python projects in this repository. It is read by OpenCode (with the `@opencode_weave/weave` plugin) on every session and informs the behavior of every agent.
+
+You interact primarily with **Loom**. Loom plans, delegates, and supervises. The other agents work behind the scenes.
+
+---
 
 ## Team Structure
 
-| Agent | Role | Primary Responsibility |
-|-------|------|----------------------|
-| **Architect** | System Design | Define architecture, tech stack, and project structure |
-| **Planner** | Task Breakdown | Convert designs into actionable, ordered tasks |
-| **Developer** | Implementation | Write clean, tested Python code |
-| **QA** | Quality Assurance | Test, validate, and verify functionality |
-| **Reviewer** | Code Review | Ensure quality, standards compliance, and best practices |
+| Agent (config key) | Display name | Role | Model tier |
+|---|---|---|---|
+| `loom` | Coordinator | Main orchestrator — routes work and supervises | Workhorse |
+| `pattern` | Architect | Strategic planning and architecture decisions | Frontier |
+| `tapestry` | Execution | Drives plan execution step by step | Workhorse |
+| `shuttle` | Developer | Domain specialist that writes the actual code | Frontier |
+| `thread` | Scout | Fast, read-only codebase exploration | Budget |
+| `spindle` | Research | External docs and reference lookups | Budget |
+| `weft` | QA / Reviewer | Quality review and test validation (mandatory gate) | Frontier |
+| `warp` | Security | Security audit (mandatory gate) | Frontier |
+
+**Tiering rationale.** Frontier models are reserved for any agent that produces or gates code: design (Pattern), implementation (Shuttle), review (Weft), and security audit (Warp). Workhorse models handle orchestration and execution coordination, which is routing logic rather than generation. Budget models handle read-only retrieval (codebase search, doc fetching).
 
 ---
 
 ## Agent Definitions
 
-### Architect
+### Loom — Coordinator
 
-**When to invoke:** At project start, before any planning or coding.
+**When invoked:** Default entry point. You talk to Loom; Loom decides who else needs to act.
 
 **Responsibilities:**
-- Analyze project requirements and constraints
-- Define system architecture and component boundaries
-- Select Python packages, frameworks, and dependencies
-- Design project directory structure
-- Define interfaces between modules/components
-- Specify data models and flow
-- Document architectural decisions (write `docs/ARCHITECTURE.md`)
+- Assess the user's request and decide whether planning is needed.
+- Delegate planning to Pattern, exploration to Thread, research to Spindle, execution to Tapestry, review to Weft, and security audit to Warp.
+- Coordinate the response back to the user.
+- Escalate ambiguities or blockers to the user instead of guessing.
 
 **Outputs:**
-- `docs/ARCHITECTURE.md` — architecture document with diagrams and decisions
-- `requirements.txt` or `pyproject.toml` — dependencies
-- Project skeleton (directory structure, stub files)
-
-**Conventions:**
-- Follow PEP 8 for any code stubs
-- Prefer `pyproject.toml` over `setup.py`
-- Use virtual environments (`.venv`)
-- Document all external dependencies and why they were chosen
+- Routing decisions and delegation calls.
+- Summary responses synthesized from specialist outputs.
 
 ---
 
-### Planner
+### Pattern — Architect
 
-**When to invoke:** After architecture is finalized, before development begins.
+**When invoked:** By Loom, at the start of any non-trivial task that requires design decisions, before code is written.
 
 **Responsibilities:**
-- Break architecture into discrete, ordered tasks
-- Identify dependencies between tasks
-- Define acceptance criteria for each task
-- Estimate effort (small/medium/large)
-- Create a task execution sequence
-- Identify potential risks and blockers
+- Analyze project requirements and constraints.
+- Define system architecture and component boundaries.
+- Select Python packages, frameworks, and dependencies.
+- Design directory structure and module interfaces.
+- Specify data models and flow.
+- Document architectural decisions.
 
 **Outputs:**
-- Task list in execution order (markdown table or checklist)
-- Each task includes: description, acceptance criteria, dependencies, estimated effort
-- Update the task list as work progresses
+- `.weave/plans/<task>.md` — the implementation plan with research, dependency mapping, and ordered tasks (each with description, acceptance criteria, dependencies, and effort estimate).
+- `docs/ARCHITECTURE.md` — durable architecture decisions for the project.
+- `requirements.txt` or `pyproject.toml` updates.
+- Project skeleton (directories and stub files) when starting a new project.
 
 **Conventions:**
-- Tasks should be small enough to complete in a single work session
-- Each task must have clear, testable acceptance criteria
-- Mark tasks with: `[ ]` (pending), `[/]` (in progress), `[x]` (done)
+- PEP 8 for any code stubs.
+- Prefer `pyproject.toml` over `setup.py`.
+- Use a virtual environment (`.venv/`).
+- Document every external dependency and the reason it was chosen.
+- Each task in the plan must be small enough to complete in a single session and must have testable acceptance criteria.
+
+**Constraint:** Pattern's `Write`/`Edit` permissions are restricted to `.weave/*.md` files and `docs/`. It plans; it does not implement.
 
 ---
 
-### Developer
+### Tapestry — Execution
 
-**When to invoke:** For each task assigned by the Planner, in order.
+**When invoked:** When the user issues `/start-work`, or when Loom hands off an approved plan.
 
 **Responsibilities:**
-- Implement tasks according to architecture and acceptance criteria
-- Write clean, idiomatic Python code
-- Write unit tests alongside implementation
-- Follow project coding standards
-- Keep commits atomic and well-described
+- Read the approved plan from `.weave/plans/`.
+- Drive sequential execution of plan tasks.
+- Maintain a todo list reflecting plan status: `[ ]` pending, `[/]` in progress, `[x]` done.
+- Delegate the actual implementation of each task to Shuttle.
+- Pause for Weft and Warp gates between tasks where the plan requires it.
 
 **Outputs:**
-- Working implementation code
-- Unit tests in `tests/` directory
-- Updated documentation if needed
+- Updated plan file with task statuses.
+- Coordinated implementation across multiple Shuttle invocations.
 
-**Conventions:**
-- Follow PEP 8 (use `ruff` or `black` for formatting)
-- Use type hints (`from typing import ...`)
-- Write docstrings for all public functions, classes, and modules (Google or NumPy style)
-- Tests go in `tests/` matching source structure (`src/foo.py` → `tests/test_foo.py`)
-- Use `pytest` as the test framework
-- Each function should do one thing
-- Error handling: use specific exceptions, never bare `except`
-- Log with `logging` module, not `print`
+**Constraint:** Tapestry cannot spawn subagents (this is locked in Weave's design). It executes plans directly and delegates only to Shuttle.
 
 ---
 
-### QA
+### Shuttle — Developer
 
-**When to invoke:** After Developer completes a task or set of tasks.
+**When invoked:** By Loom for one-off implementation requests, or by Tapestry for each task in a plan.
 
 **Responsibilities:**
-- Run all existing tests and verify they pass
-- Write additional integration and edge-case tests
-- Test against acceptance criteria
-- Verify error handling and boundary conditions
-- Check for regressions
-- Report bugs with reproduction steps
+- Implement tasks according to the architecture and acceptance criteria.
+- Write clean, idiomatic Python.
+- Write unit tests alongside implementation.
+- Keep changes atomic and well-scoped.
 
 **Outputs:**
-- Test execution results
-- Bug reports (if any) with severity and reproduction steps
-- `docs/TEST_REPORT.md` — summary of test coverage and findings
+- Working implementation code under `src/`.
+- Unit tests under `tests/` mirroring source structure.
+- Updated documentation when behavior changes.
 
 **Conventions:**
-- Run `pytest -v --cov=src tests/` for test execution and coverage
-- Target minimum 80% line coverage
-- Test happy path, error paths, and edge cases
-- Verify type correctness with `mypy`
-- Verify linting with `ruff check .`
-- Report findings objectively with clear reproduction steps
+- PEP 8, formatted with `ruff format` (or `black`).
+- Type hints on all public functions and methods.
+- Google-style docstrings for all public functions, classes, and modules.
+- Tests mirror source layout: `src/foo.py` → `tests/test_foo.py`.
+- `pytest` is the test framework.
+- Each function does one thing.
+- Use specific exceptions; never bare `except`.
+- Use the `logging` module, not `print`.
+- No hardcoded secrets, no magic numbers — use named constants or config.
 
 ---
 
-### Reviewer
+### Thread — Scout
 
-**When to invoke:** After QA passes, before marking a task as complete.
+**When invoked:** By Loom or other agents when codebase exploration is needed (finding files, searching for patterns, understanding existing code).
 
 **Responsibilities:**
-- Review code for correctness, readability, and maintainability
-- Check adherence to architecture decisions
-- Verify naming conventions and code style
-- Identify code smells, anti-patterns, and technical debt
-- Suggest improvements (not just problems)
-- Approve or request changes
+- Read-only navigation and search using `grep`, `glob`, and `read`.
+- Answer questions about the codebase quickly and cheaply.
 
 **Outputs:**
-- Review comments with specific line references
-- Approval or change request decision
-- Summary of findings
+- File paths, code snippets, and structural summaries returned to the requesting agent.
+
+**Constraint:** Read-only. No `Write` or `Edit` access.
+
+---
+
+### Spindle — Research
+
+**When invoked:** When external documentation, library references, or web research is needed.
+
+**Responsibilities:**
+- Look up library docs, API references, and authoritative sources.
+- Synthesize findings with citations.
+
+**Outputs:**
+- Synthesized research with source citations, returned to the requesting agent.
+
+---
+
+### Weft — QA / Reviewer (Mandatory Gate)
+
+**When invoked:** Automatically after Shuttle completes any code change. Runs as a mandatory gate before the workflow completes — Loom cannot skip it.
+
+**Responsibilities:**
+- Run all existing tests and verify they pass.
+- Verify additional integration and edge-case tests exist where the acceptance criteria require them.
+- Verify type correctness with `mypy`.
+- Verify linting with `ruff check .`.
+- Check coverage and report gaps.
+- Review code for correctness, readability, and maintainability.
+- Check adherence to architecture decisions in `docs/ARCHITECTURE.md`.
+- Identify code smells, anti-patterns, and technical debt.
+- Distinguish blocking issues from suggestions.
+
+**Outputs:**
+- Test execution results.
+- Bug reports with severity and reproduction steps.
+- Review comments tied to specific files and lines.
+- An overall decision: **approved**, **changes requested**, or **blocked**.
+- `docs/TEST_REPORT.md` — running summary of coverage and findings (updated, not replaced, between runs).
 
 **Conventions:**
-- Review checklist:
-  - [ ] Code follows architecture decisions
-  - [ ] PEP 8 compliance
-  - [ ] Type hints present and correct
-  - [ ] Docstrings present and accurate
-  - [ ] Tests cover the implementation
-  - [ ] No hardcoded values or magic numbers
-  - [ ] Error handling is appropriate
-  - [ ] No unused imports or dead code
-  - [ ] Imports are organized and correct
-  - [ ] Logging is appropriate (no sensitive data)
-- Be constructive: suggest the fix, not just the problem
-- Distinguish between blocking issues and suggestions
+- Run `pytest -v --cov=src tests/` for tests and coverage.
+- Target a minimum of 80% line coverage.
+- Test happy path, error paths, and edge cases.
+- Reject only on true blocking issues; surface non-blocking concerns as suggestions.
+
+**Review checklist:**
+- [ ] Code follows architecture decisions.
+- [ ] PEP 8 compliance.
+- [ ] Type hints present and correct.
+- [ ] Google-style docstrings present and accurate.
+- [ ] Tests cover the implementation.
+- [ ] No hardcoded values or magic numbers.
+- [ ] Error handling uses specific exceptions.
+- [ ] No unused imports or dead code.
+- [ ] Imports are organized correctly.
+- [ ] Logging is appropriate (no sensitive data).
+
+---
+
+### Warp — Security (Mandatory Gate)
+
+**When invoked:** Automatically after Weft passes, before the workflow completes.
+
+**Responsibilities:**
+- Audit code for security issues: injection, unsafe deserialization, secret leakage, weak crypto, unsafe subprocess use, path traversal, SSRF, and dependency vulnerabilities.
+- Verify no credentials, tokens, or keys are committed.
+- Flag risky patterns even when they aren't strict vulnerabilities (e.g., overly broad permissions, unbounded input).
+
+**Outputs:**
+- Security findings with severity (critical / high / medium / low / informational).
+- Remediation suggestions with the fix, not just the problem.
+- An overall decision: **approved**, **changes requested**, or **blocked**.
 
 ---
 
 ## Workflow
 
 ```
-[Start]
-   │
-   ▼
-┌─────────┐
-│Architect│ ← Define system design
-└────┬────┘
-     │ outputs: architecture, structure, dependencies
-     ▼
-┌─────────┐
-│ Planner │ ← Break into tasks
-└────┬────┘
-     │ outputs: ordered task list with acceptance criteria
-     ▼
-┌──────────────────────┐
-│      Developer       │ ← Implement task
-└──────────┬───────────┘
-           │ outputs: code + tests
-           ▼
-┌──────────────────────┐
-│         QA           │ ← Validate implementation
-└──────────┬───────────┘
-           │ outputs: test results, bug reports
-           ▼
-     ┌──────────────┐
-     │ Tests pass?  ├── No → back to Developer
-     └──────┬───────┘
-            │ Yes
-            ▼
-┌──────────────────────┐
-│      Reviewer        │ ← Review quality
-└──────────┬───────────┘
-           │ outputs: review comments
-           ▼
-     ┌──────────────┐
-     │ Approved?    ├── No → back to Developer
-     └──────┬───────┘
-            │ Yes
-            ▼
-     ┌──────────────┐
-     │ More tasks?  ├── Yes → next task → Developer
-     └──────┬───────┘
-            │ No
-            ▼
-         [Done]
+[User talks to Loom]
+       │
+       ▼
+   ┌───────┐
+   │ Loom  │  Decides: simple task, or needs a plan?
+   └───┬───┘
+       │
+       ├──── simple ──────────────────────────┐
+       │                                      │
+       ▼                                      │
+   ┌─────────┐                                │
+   │ Pattern │  Produces .weave/plans/*.md   │
+   └────┬────┘  + docs/ARCHITECTURE.md        │
+        │                                      │
+        ▼                                      │
+   ┌─────────┐                                │
+   │  User   │  Reviews and approves the plan │
+   │ approves│                                │
+   └────┬────┘                                │
+        │                                      │
+        ▼                                      │
+   ┌──────────┐                               │
+   │ Tapestry │  Drives plan execution        │
+   └────┬─────┘                               │
+        │                                      │
+        ▼                                      │
+   ┌─────────┐  ◄─── Thread (search)          │
+   │ Shuttle │  ◄─── Spindle (docs)           │
+   └────┬────┘                                 │
+        │                                      │
+        ▼ ◄────────────────────────────────────┘
+   ┌──────┐
+   │ Weft │  Tests, lint, types, review
+   └──┬───┘
+      │
+   ┌──┴────────┐
+   │ Approved? │── No ──► back to Shuttle
+   └──┬────────┘
+      │ Yes
+      ▼
+   ┌──────┐
+   │ Warp │  Security audit
+   └──┬───┘
+      │
+   ┌──┴────────┐
+   │ Approved? │── No ──► back to Shuttle
+   └──┬────────┘
+      │ Yes
+      ▼
+   [Loom summarizes to user]
 ```
+
+**Mandatory gates.** Weft and Warp run automatically after code is written. They are not optional and Loom cannot skip them. Shuttle does not self-review.
+
+**Continuation.** Tapestry resumes from `.weave/plans/` if a session is interrupted. The plan file is the source of truth for execution state.
+
+---
 
 ## Communication Protocol
 
-- All agents read this file before acting
-- Each agent updates the task list with status changes
-- Blockers or ambiguities escalate to the user
-- No agent skips a role's output — each handoff is required
-- The Developer does not self-review; the Reviewer must be a separate pass
+- All agents read this file at the start of every session.
+- Plans live in `.weave/plans/`, written by Pattern, executed by Tapestry.
+- Architecture decisions live in `docs/ARCHITECTURE.md`, written by Pattern, referenced by everyone.
+- QA findings accumulate in `docs/TEST_REPORT.md`, updated by Weft.
+- Blockers and ambiguities escalate to the user — no agent guesses.
+- Each handoff has a defined output. No agent skips a downstream agent's work.
+
+---
 
 ## Project Conventions
 
 | Aspect | Standard |
-|--------|----------|
-| Python version | 3.10+ (or as specified) |
+|---|---|
+| Python version | 3.10+ (or as specified in `pyproject.toml`) |
 | Package management | `uv` or `pip` with `pyproject.toml` |
-| Formatting | `black` or `ruff format` |
+| Formatting | `ruff format` (or `black`) |
 | Linting | `ruff check` |
 | Type checking | `mypy` |
 | Testing | `pytest` |
-| Coverage | `pytest-cov`, target 80%+ |
+| Coverage | `pytest-cov`, target ≥ 80% |
 | Docstrings | Google style |
 | Line length | 88 (black default) |
 | Virtual env | `.venv/` |
+| Logging | `logging` module (never `print`) |
+| Exceptions | Specific exceptions only (never bare `except`) |
 
-## Files and Directories
+---
+
+## Repository Layout
 
 ```
 project/
@@ -235,14 +302,25 @@ project/
 │   └── <package>/        # Main package
 │       ├── __init__.py
 │       └── ...
-├── tests/                # Test files
+├── tests/                # Test files mirroring src/
 │   ├── __init__.py
 │   └── test_*.py
-├── docs/                 # Documentation
-│   ├── ARCHITECTURE.md   # Architecture decisions
-│   └── TEST_REPORT.md    # QA reports
+├── docs/
+│   ├── ARCHITECTURE.md   # Pattern's architecture decisions
+│   └── TEST_REPORT.md    # Weft's running QA report
+├── .weave/               # Created by Weave on first use
+│   ├── plans/            # Pattern's plans, executed by Tapestry
+│   └── state/            # Tapestry's execution state
 ├── pyproject.toml        # Project config and dependencies
 ├── .venv/                # Virtual environment
+├── opencode.json         # OpenCode + Weave configuration
 ├── AGENTS.md             # This file
 └── README.md             # Project overview
 ```
+
+---
+
+## OpenCode Configuration Reference
+
+The agent roles, models, and behavior described above are wired up in `opencode.json` at the project root. That file controls model selection, fallbacks, and per-agent prompt overrides; this file (`AGENTS.md`) is the human-readable contract that every agent reads on every session. If the two ever drift, this file is the source of truth for *what* each agent should do; `opencode.json` controls *how* (which model, which tools).
+

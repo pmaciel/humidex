@@ -1,6 +1,7 @@
-.venv/
-__pycache__/
-*.pyc
 *.egg-info/
+*.pyc
 .coverage
 .pytest_cache/
+.venv/
+.weave/
+__pycache__/

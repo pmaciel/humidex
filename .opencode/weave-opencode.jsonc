@@ -1,0 +1,42 @@
+{
+  // ── Critical: frontier model ─────────────────────────────
+  "agents": {
+    "pattern": {
+      "model": "github-copilot/claude-opus-4.7",
+      "display_name": "Architect",
+      "prompt_append": "Follow the conventions in AGENTS.md. Produce docs/ARCHITECTURE.md with explicit dependency choices and justifications. Prefer pyproject.toml over setup.py."
+    },
+    "shuttle": {
+      "model": "github-copilot/claude-opus-4.7",
+      "display_name": "Developer",
+      "prompt_append": "Follow PEP 8, use type hints, write Google-style docstrings, place tests in tests/ mirroring src/ layout. Use pytest. Never use bare except. Log via the logging module, not print."
+    },
+    "weft": {
+      "model": "github-copilot/claude-opus-4.7",
+      "display_name": "QA / Reviewer",
+      "prompt_append": "Run `pytest -v --cov=src tests/` and verify >=80% line coverage. Run `ruff check .` and `mypy`. Apply the AGENTS.md reviewer checklist. Distinguish blocking issues from suggestions."
+    },
+    "warp": {
+      "model": "github-copilot/claude-opus-4.7",
+      "display_name": "Security"
+    },
+
+    // ── Non-critical: cheaper models ─────────────────────────
+    "loom": {
+      "model": "github-copilot/claude-sonnet-4.6",
+      "display_name": "Coordinator"
+    },
+    "tapestry": {
+      "model": "github-copilot/claude-sonnet-4.6",
+      "display_name": "Execution"
+    },
+    "thread": {
+      "model": "github-copilot/claude-haiku-4-5",
+      "display_name": "Scout"
+    },
+    "spindle": {
+      "model": "github-copilot/claude-haiku-4-5",
+      "display_name": "Research"
+    }
+  }
+}
