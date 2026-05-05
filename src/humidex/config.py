@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import ClassVar
 
 
 @dataclass(frozen=True)
@@ -21,7 +22,7 @@ class Config:
         HUMIDEX_TEMP_MAX_C: Maximum valid temperature in Celsius.
     """
 
-    user_agent: str = "humidex/4.0.0"
+    user_agent: str = "humidex/5.0.0"
     geocoder_timeout: float = 10.0
     ecmwf_source: str = "aws"
     ecmwf_timeout: float = 60.0
@@ -30,7 +31,9 @@ class Config:
     temp_min_c: float = -90.0
     temp_max_c: float = 60.0
 
-    _valid_sources = frozenset({"ecmwf", "aws", "google", "azure"})
+    _valid_sources: ClassVar[frozenset[str]] = frozenset(
+        {"ecmwf", "aws", "google", "azure"}
+    )
 
     def __post_init__(self) -> None:
         if self.ecmwf_source not in self._valid_sources:
@@ -49,21 +52,38 @@ class Config:
     @classmethod
     def from_env(cls) -> Config:
         """Create configuration from environment variables."""
+
+        def _parse_float(var_name: str, default: float) -> float:
+            raw = os.getenv(var_name)
+            if raw is None:
+                return default
+            try:
+                return float(raw)
+            except ValueError as exc:
+                msg = f"Invalid value for {var_name}: {raw!r}"
+                raise ValueError(msg) from exc
+
+        def _parse_int(var_name: str, default: int) -> int:
+            raw = os.getenv(var_name)
+            if raw is None:
+                return default
+            try:
+                return int(raw)
+            except ValueError as exc:
+                msg = f"Invalid value for {var_name}: {raw!r}"
+                raise ValueError(msg) from exc
+
         return cls(
             user_agent=os.getenv("HUMIDEX_USER_AGENT", cls.user_agent),
-            geocoder_timeout=float(
-                os.getenv("HUMIDEX_GEOCODER_TIMEOUT", cls.geocoder_timeout)
+            geocoder_timeout=_parse_float(
+                "HUMIDEX_GEOCODER_TIMEOUT", cls.geocoder_timeout
             ),
             ecmwf_source=os.getenv("HUMIDEX_ECMWF_SOURCE", cls.ecmwf_source),
-            ecmwf_timeout=float(
-                os.getenv("HUMIDEX_ECMWF_TIMEOUT", cls.ecmwf_timeout)
-            ),
-            retry_max=int(os.getenv("HUMIDEX_RETRY_MAX", cls.retry_max)),
-            retry_backoff=float(
-                os.getenv("HUMIDEX_RETRY_BACKOFF", cls.retry_backoff)
-            ),
-            temp_min_c=float(os.getenv("HUMIDEX_TEMP_MIN_C", cls.temp_min_c)),
-            temp_max_c=float(os.getenv("HUMIDEX_TEMP_MAX_C", cls.temp_max_c)),
+            ecmwf_timeout=_parse_float("HUMIDEX_ECMWF_TIMEOUT", cls.ecmwf_timeout),
+            retry_max=_parse_int("HUMIDEX_RETRY_MAX", cls.retry_max),
+            retry_backoff=_parse_float("HUMIDEX_RETRY_BACKOFF", cls.retry_backoff),
+            temp_min_c=_parse_float("HUMIDEX_TEMP_MIN_C", cls.temp_min_c),
+            temp_max_c=_parse_float("HUMIDEX_TEMP_MAX_C", cls.temp_max_c),
         )
 
 

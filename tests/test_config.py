@@ -1,5 +1,6 @@
 """Tests for configuration module."""
 
+import dataclasses
 import os
 from unittest.mock import patch
 
@@ -13,7 +14,7 @@ class TestConfig:
 
     def test_defaults(self) -> None:
         config = Config()
-        assert config.user_agent == "humidex/4.0.0"
+        assert config.user_agent == "humidex/5.0.0"
         assert config.geocoder_timeout == pytest.approx(10.0)
         assert config.ecmwf_source == "aws"
         assert config.retry_max == 3
@@ -30,7 +31,7 @@ class TestConfig:
 
     def test_frozen(self) -> None:
         config = Config()
-        with pytest.raises(Exception):
+        with pytest.raises(dataclasses.FrozenInstanceError):
             config.retry_max = 10
 
     def test_temp_min_greater_than_max(self) -> None:
@@ -54,7 +55,7 @@ class TestConfigFromEnv:
             for key in keys:
                 os.environ.pop(key, None)
             config = Config.from_env()
-        assert config.user_agent == "humidex/4.0.0"
+        assert config.user_agent == "humidex/5.0.0"
 
     def test_from_env_overrides(self) -> None:
         with patch.dict(
@@ -69,3 +70,19 @@ class TestConfigFromEnv:
         assert config.user_agent == "test-agent/1.0"
         assert config.retry_max == 5
         assert config.ecmwf_source == "google"
+
+    def test_from_env_invalid_int_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("HUMIDEX_RETRY_MAX", "abc")
+        with pytest.raises(ValueError) as exc_info:
+            Config.from_env()
+        assert "HUMIDEX_RETRY_MAX" in str(exc_info.value)
+        assert "'abc'" in str(exc_info.value)
+
+    def test_from_env_invalid_float_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("HUMIDEX_GEOCODER_TIMEOUT", "not-a-number")
+        with pytest.raises(ValueError) as exc_info:
+            Config.from_env()
+        assert "HUMIDEX_GEOCODER_TIMEOUT" in str(exc_info.value)
+        assert "'not-a-number'" in str(exc_info.value)

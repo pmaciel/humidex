@@ -1,6 +1,7 @@
 """Tests for fetcher module."""
 
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -12,6 +13,7 @@ from humidex.fetcher import (
     VALID_STEPS,
     ECMWFFetcher,
     _find_nearest_index,
+    _grib_tempfile_path,
     _validate_step,
     _validate_temperature,
     fetch_weather_data,
@@ -108,17 +110,119 @@ class TestECMWFFetcher:
             call_kwargs = mock_client.retrieve.call_args[1]
             assert call_kwargs["param"] == ["2t", "2d"]
 
+    def test_fetch_cleans_up_tempfile(self, config: Config) -> None:
+        """After a successful fetch, the temp grib file must be removed."""
+        captured: dict[str, Path] = {}
+
+        mock_client = MagicMock()
+        mock_result = MagicMock()
+        mock_result.datetime = datetime(2026, 5, 5, 12, 0, tzinfo=timezone.utc)
+        mock_client.retrieve.return_value = mock_result
+
+        location = Location(name="Bangkok", latitude=13.7563, longitude=100.5018)
+        fetcher = ECMWFFetcher(config=config)
+
+        def _capture_parse(
+            grib_path: Path, _loc: Location, _vt: datetime, _step: int
+        ) -> MagicMock:
+            captured["path"] = Path(grib_path)
+            assert captured["path"].exists()
+            return MagicMock()
+
+        with (
+            patch("humidex.fetcher.Client", return_value=mock_client),
+            patch.object(fetcher, "_parse_grib", side_effect=_capture_parse),
+        ):
+            fetcher.fetch(location, step=0)
+
+        assert "path" in captured
+        assert not captured["path"].exists()
+
+    def test_grib_tempfile_path_cleanup(self) -> None:
+        """The context manager unlinks the file on exit."""
+        with _grib_tempfile_path() as path:
+            assert path.exists()
+            assert path.suffix == ".grib2"
+            captured = path
+        assert not captured.exists()
+
+    def test_grib_tempfile_path_cleanup_on_exception(self) -> None:
+        """The context manager unlinks even when the block raises."""
+        captured: Path | None = None
+        with pytest.raises(RuntimeError):
+            with _grib_tempfile_path() as path:
+                captured = path
+                raise RuntimeError("boom")
+        assert captured is not None
+        assert not captured.exists()
+
     def test_fetch_retry_on_failure(self, config: Config) -> None:
         location = Location(name="Test", latitude=0.0, longitude=0.0)
         fetcher = ECMWFFetcher(config=config)
 
-        with patch.object(fetcher, "_fetch_and_parse") as mock_fetch:
+        with (
+            patch.object(fetcher, "_fetch_and_parse") as mock_fetch,
+            patch("humidex.retry.time.sleep") as mock_sleep,
+        ):
             mock_fetch.side_effect = Exception("Network error")
 
             with pytest.raises(DataFetchError, match="failed after"):
                 fetcher.fetch(location, step=0)
 
             assert mock_fetch.call_count == config.retry_max + 1
+            assert mock_sleep.call_count >= 1
+            for call in mock_sleep.call_args_list:
+                assert call[0][0] > 0
+
+    def test_parse_grib_missing_valid_time_raises(self, config: Config) -> None:
+        """_parse_grib must fail loudly if ECMWF returned no valid_time."""
+        fetcher = ECMWFFetcher(config=config)
+        location = Location(name="Bangkok", latitude=13.7563, longitude=100.5018)
+
+        t2m_var = MagicMock()
+        t2m_var.isel.return_value = MagicMock(values=np.array(298.15))
+        d2m_var = MagicMock()
+        d2m_var.isel.return_value = MagicMock(values=np.array(293.15))
+
+        mock_ds = MagicMock()
+        mock_ds.__enter__.return_value = mock_ds
+        mock_ds.__exit__.return_value = False
+        mock_ds.__getitem__.side_effect = lambda key: {
+            "latitude": MagicMock(values=np.array([13.0, 14.0])),
+            "longitude": MagicMock(values=np.array([100.0, 101.0])),
+            "t2m": t2m_var,
+            "d2m": d2m_var,
+        }[key]
+
+        with patch("humidex.fetcher.xr.open_dataset", return_value=mock_ds):
+            with pytest.raises(DataParseError, match="missing valid_time"):
+                fetcher._parse_grib(
+                    grib_path=MagicMock(),
+                    location=location,
+                    valid_time=None,
+                    step=0,
+                )
+
+    def test_fetch_and_parse_missing_valid_time_raises(self, config: Config) -> None:
+        """_fetch_and_parse propagates DataParseError when result.datetime is None."""
+        mock_client = MagicMock()
+        mock_result = MagicMock()
+        mock_result.datetime = None
+        mock_client.retrieve.return_value = mock_result
+
+        location = Location(name="Test", latitude=0.0, longitude=0.0)
+        fetcher = ECMWFFetcher(config=config)
+
+        with (
+            patch("humidex.fetcher.Client", return_value=mock_client),
+            patch.object(
+                fetcher,
+                "_parse_grib",
+                side_effect=DataParseError("ECMWF result missing valid_time"),
+            ),
+            pytest.raises(DataParseError, match="missing valid_time"),
+        ):
+            fetcher.fetch(location, step=0)
 
 
 class TestFetchWeatherDataConvenience:

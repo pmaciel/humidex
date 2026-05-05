@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import math
+import os
 import tempfile
-from datetime import datetime, timezone
+from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -58,6 +61,28 @@ def _find_nearest_index(array: np.ndarray, value: float) -> int:
         Index of the nearest value.
     """
     return int(np.abs(array - value).argmin())
+
+
+@contextlib.contextmanager
+def _grib_tempfile_path() -> Iterator[Path]:
+    """Yield a path to a temporary GRIB2 file, cleaning up on exit.
+
+    Closes the file descriptor returned by :func:`tempfile.mkstemp`
+    immediately so it does not leak, and unlinks the file on exit.
+
+    Yields:
+        Path to a freshly created temporary ``.grib2`` file.
+    """
+    fd, target_path = tempfile.mkstemp(suffix=".grib2")
+    os.close(fd)
+    path = Path(target_path)
+    try:
+        yield path
+    finally:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _validate_temperature(value: float, config: Config) -> None:
@@ -146,25 +171,17 @@ class ECMWFFetcher(WeatherFetcher):
         """
         client = Client(source=self._config.ecmwf_source)
 
-        _, target_path = tempfile.mkstemp(suffix=".grib2")
-        try:
+        with _grib_tempfile_path() as target_path:
             result = client.retrieve(
                 step=step,
                 type="fc",
                 param=list(ECMWF_PARAMS),
-                target=target_path,
+                target=str(target_path),
             )
 
             logger.debug("Downloaded GRIB file: %s", target_path)
 
-            return self._parse_grib(
-                Path(target_path), location, result.datetime, step
-            )
-        finally:
-            try:
-                Path(target_path).unlink(missing_ok=True)
-            except OSError:
-                pass
+            return self._parse_grib(target_path, location, result.datetime, step)
 
     def _parse_grib(
         self,
@@ -195,12 +212,17 @@ class ECMWFFetcher(WeatherFetcher):
                 lat_idx = _find_nearest_index(lat_values, location.latitude)
                 lon_idx = _find_nearest_index(lon_values, location.longitude)
 
-                temp_k = float(ds[ECMWF_TEMP_VAR].values[lat_idx, lon_idx])
-                dew_k = float(ds[ECMWF_DEW_VAR].values[lat_idx, lon_idx])
+                temp_k = float(
+                    ds[ECMWF_TEMP_VAR].isel(latitude=lat_idx, longitude=lon_idx).values
+                )
+                dew_k = float(
+                    ds[ECMWF_DEW_VAR].isel(latitude=lat_idx, longitude=lon_idx).values
+                )
 
         except DataParseError:
             raise
-        except Exception as e:
+        except (KeyError, ValueError, OSError, RuntimeError) as e:
+            # xarray/cfgrib raise these on malformed GRIB data
             msg = f"Failed to parse GRIB file: {e}"
             raise DataParseError(msg) from e
 
@@ -216,16 +238,15 @@ class ECMWFFetcher(WeatherFetcher):
             dew_c,
         )
 
-        if isinstance(valid_time, datetime):
-            valid_dt = valid_time
-        else:
-            valid_dt = datetime.now(tz=timezone.utc)
+        if not isinstance(valid_time, datetime):
+            msg = "ECMWF result missing valid_time"
+            raise DataParseError(msg)
 
         return WeatherData(
             temperature_c=round(temp_c, 1),
             dewpoint_c=round(dew_c, 1),
             forecast_step=step,
-            valid_time=valid_dt,
+            valid_time=valid_time,
         )
 
 

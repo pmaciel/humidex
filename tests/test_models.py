@@ -1,5 +1,6 @@
 """Tests for data models."""
 
+import dataclasses
 from datetime import datetime, timezone
 
 import pytest
@@ -38,7 +39,7 @@ class TestLocation:
 
     def test_frozen(self) -> None:
         loc = Location(name="Test", latitude=0.0, longitude=0.0)
-        with pytest.raises(Exception):
+        with pytest.raises(dataclasses.FrozenInstanceError):
             loc.name = "Changed"
 
     def test_str(self) -> None:
@@ -84,9 +85,7 @@ class TestWeatherData:
             (20.0, -91.0),
         ],
     )
-    def test_invalid_temperature(
-        self, temperature_c: float, dewpoint_c: float
-    ) -> None:
+    def test_invalid_temperature(self, temperature_c: float, dewpoint_c: float) -> None:
         with pytest.raises(ValueError, match="range"):
             WeatherData(
                 temperature_c=temperature_c,
@@ -111,7 +110,7 @@ class TestWeatherData:
             forecast_step=0,
             valid_time=datetime.now(tz=timezone.utc),
         )
-        with pytest.raises(Exception):
+        with pytest.raises(dataclasses.FrozenInstanceError):
             weather.temperature_c = 25.0
 
     def test_naive_timezone_rejected(self) -> None:
@@ -154,5 +153,5 @@ class TestHumidexResult:
         assert isinstance(d["comfort"], str)
 
     def test_frozen(self, hot_result: HumidexResult) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(dataclasses.FrozenInstanceError):
             hot_result.humidex = 35.0

@@ -10,6 +10,9 @@ Public API:
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
+
 from humidex.calculator import calculate_humidex, get_comfort_category
 from humidex.client import HumidexClient
 from humidex.config import Config
@@ -26,12 +29,32 @@ from humidex.errors import (
 from humidex.fetcher import fetch_weather_data
 from humidex.formatter import format_human, format_json
 from humidex.geocoder import geocode
-from humidex.models import HumidexResult, HumidexResultDict, Location, WeatherData
+from humidex.models import (
+    MAX_LAT,
+    MAX_LON,
+    MAX_TEMP_C,
+    MIN_LAT,
+    MIN_LON,
+    MIN_TEMP_C,
+    HumidexResult,
+    HumidexResultDict,
+    Location,
+    WeatherData,
+)
 from humidex.protocols import Geocoder, WeatherFetcher
 
-__version__ = "4.0.0"
+try:
+    __version__ = _pkg_version("humidex")
+except PackageNotFoundError:
+    __version__ = "0.0.0+local"
 
 __all__ = [
+    "MAX_LAT",
+    "MAX_LON",
+    "MAX_TEMP_C",
+    "MIN_LAT",
+    "MIN_LON",
+    "MIN_TEMP_C",
     "CalculationError",
     "Config",
     "DataFetchError",
@@ -99,17 +122,6 @@ def get_humidex(
         >>> loc = Location(name="Bangkok", latitude=13.75, longitude=100.50)
         >>> result = get_humidex(loc)
     """
-    if isinstance(place_or_location, str):
-        if geocoder is not None:
-            location = geocoder.geocode(place_or_location)
-        else:
-            location = geocode(place_or_location, config=config)
-    else:
-        location = place_or_location
-
-    if fetcher is not None:
-        weather = fetcher.fetch(location, step=step)
-    else:
-        weather = fetch_weather_data(location, step=step, config=config)
-
-    return calculate_humidex(location, weather, config=config)
+    return HumidexClient(config=config, geocoder=geocoder, fetcher=fetcher).get_humidex(
+        place_or_location, step=step
+    )

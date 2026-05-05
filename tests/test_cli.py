@@ -10,7 +10,7 @@ from humidex.models import HumidexResult, Location
 class TestCLI:
     """Tests for CLI main command."""
 
-    def test_human_output(self, hot_result: "HumidexResult") -> None:
+    def test_human_output(self, hot_result: HumidexResult) -> None:
         runner = CliRunner()
         with pytest.MonkeyPatch.context() as mp:
             import humidex.cli
@@ -23,7 +23,7 @@ class TestCLI:
         assert "40.2" in result.output
         assert "Great discomfort" in result.output
 
-    def test_json_output(self, hot_result: "HumidexResult") -> None:
+    def test_json_output(self, hot_result: HumidexResult) -> None:
         runner = CliRunner()
         with pytest.MonkeyPatch.context() as mp:
             import humidex.cli
@@ -35,7 +35,7 @@ class TestCLI:
         assert '"location": "Bangkok"' in result.output
         assert '"humidex": 40.2' in result.output
 
-    def test_verbose_output(self, hot_result: "HumidexResult") -> None:
+    def test_verbose_output(self, hot_result: HumidexResult) -> None:
         runner = CliRunner()
         with pytest.MonkeyPatch.context() as mp:
             import humidex.cli
@@ -46,7 +46,7 @@ class TestCLI:
         assert result.exit_code == 0
         assert "Coordinates:" in result.output
 
-    def test_with_step(self, hot_result: "HumidexResult") -> None:
+    def test_with_step(self, hot_result: HumidexResult) -> None:
         runner = CliRunner()
         call_args = {}
 
@@ -112,7 +112,7 @@ class TestCLI:
 class TestCLICoordinates:
     """Tests for CLI coordinate input."""
 
-    def test_lat_lon_input(self, hot_result: "HumidexResult") -> None:
+    def test_lat_lon_input(self, hot_result: HumidexResult) -> None:
         runner = CliRunner()
         call_args = {}
 
@@ -138,7 +138,28 @@ class TestCLICoordinates:
         assert result.exit_code == 1
         assert "Provide either PLACE or both --lat and --lon" in result.output
 
-    def test_lat_lon_verbose(self, hot_result: "HumidexResult") -> None:
+    def test_lat_without_lon(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(main, ["--lat", "13.75"])
+
+        assert result.exit_code == 1
+        assert "both --lat and --lon" in result.output
+
+    def test_lon_without_lat(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(main, ["--lon", "100.50"])
+
+        assert result.exit_code == 1
+        assert "both --lat and --lon" in result.output
+
+    def test_place_with_lat_lon_mutually_exclusive(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(main, ["Bangkok", "--lat", "13.75", "--lon", "100.50"])
+
+        assert result.exit_code == 1
+        assert "mutually exclusive" in result.output
+
+    def test_lat_lon_verbose(self, hot_result: HumidexResult) -> None:
         runner = CliRunner()
         call_args = {}
 
@@ -152,9 +173,7 @@ class TestCLICoordinates:
             import humidex.cli
 
             mp.setattr(humidex.cli.humidex, "get_humidex", mock_get_humidex)
-            result = runner.invoke(
-                main, ["--lat", "13.75", "--lon", "100.50", "-v"]
-            )
+            result = runner.invoke(main, ["--lat", "13.75", "--lon", "100.50", "-v"])
 
         assert result.exit_code == 0
         assert "Coordinates:" in result.output

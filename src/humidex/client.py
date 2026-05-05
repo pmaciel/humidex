@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from humidex.config import Config
+from humidex.calculator import calculate_humidex
+from humidex.config import Config, get_config
+from humidex.fetcher import ECMWFFetcher
 from humidex.geocoder import NominatimGeocoder
 from humidex.models import HumidexResult, Location
 from humidex.protocols import Geocoder, WeatherFetcher
@@ -28,9 +30,6 @@ class HumidexClient:
             geocoder: Geocoder. Creates NominatimGeocoder if not provided.
             fetcher: Weather fetcher. Creates ECMWFFetcher if not provided.
         """
-        from humidex.config import get_config
-        from humidex.fetcher import ECMWFFetcher
-
         self._config = config or get_config()
 
         if geocoder is not None:
@@ -63,7 +62,5 @@ class HumidexClient:
             location = place_or_location
 
         weather = self._fetcher.fetch(location, step=step)
-
-        from humidex.calculator import calculate_humidex
 
         return calculate_humidex(location, weather, config=self._config)

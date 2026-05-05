@@ -36,9 +36,7 @@ class TestGetComfortCategory:
 class TestCalculateHumidex:
     """Tests for humidex calculation."""
 
-    def test_hot_weather(
-        self, location: Location, hot_weather: WeatherData
-    ) -> None:
+    def test_hot_weather(self, location: Location, hot_weather: WeatherData) -> None:
         result = calculate_humidex(location, hot_weather)
 
         assert isinstance(result, HumidexResult)
@@ -46,17 +44,13 @@ class TestCalculateHumidex:
         assert result.weather == hot_weather
         assert result.humidex > hot_weather.temperature_c
 
-    def test_mild_weather(
-        self, location: Location, mild_weather: WeatherData
-    ) -> None:
+    def test_mild_weather(self, location: Location, mild_weather: WeatherData) -> None:
         result = calculate_humidex(location, mild_weather)
 
         assert isinstance(result, HumidexResult)
         assert result.humidex > 0
 
-    def test_cold_weather(
-        self, location: Location, cold_weather: WeatherData
-    ) -> None:
+    def test_cold_weather(self, location: Location, cold_weather: WeatherData) -> None:
         result = calculate_humidex(location, cold_weather)
 
         assert isinstance(result, HumidexResult)
@@ -101,4 +95,27 @@ class TestCalculateHumidex:
                 lambda _: "not a number",
             )
             with pytest.raises(CalculationError, match="invalid input"):
+                calculate_humidex(location, weather)
+
+    def test_unexpected_exception_propagates(self, location: Location) -> None:
+        """Unexpected exceptions (e.g. AttributeError) must not be wrapped."""
+        weather = WeatherData(
+            temperature_c=25.0,
+            dewpoint_c=15.0,
+            forecast_step=0,
+            valid_time=datetime.now(tz=timezone.utc),
+        )
+
+        def _raise_attr_error(*_args: object, **_kwargs: object) -> float:
+            raise AttributeError("boom")
+
+        with pytest.MonkeyPatch.context() as mp:
+            import humidex.calculator
+
+            mp.setattr(
+                humidex.calculator.thermofeel,
+                "calculate_humidex",
+                _raise_attr_error,
+            )
+            with pytest.raises(AttributeError, match="boom"):
                 calculate_humidex(location, weather)

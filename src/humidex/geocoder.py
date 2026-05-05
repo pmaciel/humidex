@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import logging
 
-from geopy.exc import GeocoderRateLimited
+from geopy.exc import (
+    GeocoderRateLimited,
+    GeocoderServiceError,
+    GeocoderTimedOut,
+    GeocoderUnavailable,
+)
 from geopy.geocoders import Nominatim
 
 from humidex.config import Config, get_config
@@ -76,7 +81,12 @@ class NominatimGeocoder(Geocoder):
             )
         except PlaceNotFoundError:
             raise
-        except Exception as e:
+        except (
+            GeocoderUnavailable,
+            GeocoderTimedOut,
+            GeocoderServiceError,
+            GeocoderRateLimited,
+        ) as e:
             msg = f"Geocoding failed after {self._config.retry_max + 1} attempts"
             raise GeocodingServiceError(msg, place_name=place_name) from e
 

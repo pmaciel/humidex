@@ -1,122 +1,109 @@
 """Tests for main public API."""
 
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
-
-import pytest
 
 from humidex import get_humidex
 from humidex.config import Config
 from humidex.models import Location, WeatherData
 
 
+def _make_fakes(
+    location: Location,
+    weather: object | None = None,
+) -> tuple[MagicMock, MagicMock]:
+    """Build fake geocoder and fetcher returning the given location/weather."""
+    fake_geocoder = MagicMock()
+    fake_geocoder.geocode.return_value = location
+    fake_fetcher = MagicMock()
+    fake_fetcher.fetch.return_value = weather if weather is not None else MagicMock()
+    return fake_geocoder, fake_fetcher
+
+
 class TestGetHumidex:
     """Tests for get_humidex public API function."""
 
     def test_default_flow(self) -> None:
-        mock_location = Location(name="Bangkok", latitude=13.75, longitude=100.50)
-        mock_weather = MagicMock()
-        mock_result = MagicMock()
+        location = Location(name="Bangkok", latitude=13.75, longitude=100.50)
+        weather = WeatherData(
+            temperature_c=30.0,
+            dewpoint_c=24.0,
+            forecast_step=0,
+            valid_time=datetime.now(tz=timezone.utc),
+        )
+        geocoder, fetcher = _make_fakes(location, weather)
 
-        with pytest.MonkeyPatch.context() as mp:
-            import humidex
+        result = get_humidex("Bangkok", geocoder=geocoder, fetcher=fetcher)
 
-            mp.setattr(humidex, "geocode", lambda *a, **kw: mock_location)
-            mp.setattr(humidex, "fetch_weather_data", lambda *a, **kw: mock_weather)
-            mp.setattr(
-                humidex,
-                "calculate_humidex",
-                lambda *a, **kw: mock_result,
-            )
-
-            result = get_humidex("Bangkok")
-
-        assert result == mock_result
+        geocoder.geocode.assert_called_once_with("Bangkok")
+        fetcher.fetch.assert_called_once()
+        assert result.location == location
+        assert result.weather == weather
 
     def test_with_location_object(self) -> None:
-        mock_location = Location(name="Test", latitude=10.0, longitude=20.0)
-        mock_weather = MagicMock()
-        mock_result = MagicMock()
+        location = Location(name="Test", latitude=10.0, longitude=20.0)
+        weather = WeatherData(
+            temperature_c=25.0,
+            dewpoint_c=15.0,
+            forecast_step=0,
+            valid_time=datetime.now(tz=timezone.utc),
+        )
+        geocoder, fetcher = _make_fakes(location, weather)
 
-        with pytest.MonkeyPatch.context() as mp:
-            import humidex
+        result = get_humidex(location, geocoder=geocoder, fetcher=fetcher)
 
-            mp.setattr(humidex, "fetch_weather_data", lambda *a, **kw: mock_weather)
-            mp.setattr(
-                humidex,
-                "calculate_humidex",
-                lambda *a, **kw: mock_result,
-            )
-
-            result = get_humidex(mock_location)
-
-        assert result == mock_result
+        # Geocoder must NOT be called when a Location is passed.
+        geocoder.geocode.assert_not_called()
+        fetcher.fetch.assert_called_once()
+        assert result.location == location
 
     def test_custom_geocoder(self) -> None:
-        mock_geocoder = MagicMock()
-        mock_location = Location(name="Custom", latitude=10.0, longitude=20.0)
-        mock_geocoder.geocode.return_value = mock_location
-        mock_weather = MagicMock()
-        mock_result = MagicMock()
+        custom_location = Location(name="Custom", latitude=10.0, longitude=20.0)
+        custom_geocoder = MagicMock()
+        custom_geocoder.geocode.return_value = custom_location
+        weather = WeatherData(
+            temperature_c=20.0,
+            dewpoint_c=10.0,
+            forecast_step=0,
+            valid_time=datetime.now(tz=timezone.utc),
+        )
+        fetcher = MagicMock()
+        fetcher.fetch.return_value = weather
 
-        with pytest.MonkeyPatch.context() as mp:
-            import humidex
+        result = get_humidex("Custom", geocoder=custom_geocoder, fetcher=fetcher)
 
-            mp.setattr(humidex, "fetch_weather_data", lambda *a, **kw: mock_weather)
-            mp.setattr(
-                humidex,
-                "calculate_humidex",
-                lambda *a, **kw: mock_result,
-            )
-
-            result = get_humidex("Custom", geocoder=mock_geocoder)
-
-        mock_geocoder.geocode.assert_called_once_with("Custom")
-        assert result == mock_result
+        custom_geocoder.geocode.assert_called_once_with("Custom")
+        assert result.location == custom_location
 
     def test_custom_fetcher(self) -> None:
-        mock_location = Location(name="Test", latitude=10.0, longitude=20.0)
-        mock_fetcher = MagicMock()
-        mock_weather = WeatherData(
+        location = Location(name="Test", latitude=10.0, longitude=20.0)
+        custom_fetcher = MagicMock()
+        weather = WeatherData(
             temperature_c=25.0,
             dewpoint_c=15.0,
             forecast_step=12,
-            valid_time=MagicMock(),
+            valid_time=datetime.now(tz=timezone.utc),
         )
-        mock_fetcher.fetch.return_value = mock_weather
-        mock_result = MagicMock()
+        custom_fetcher.fetch.return_value = weather
+        geocoder = MagicMock()
+        geocoder.geocode.return_value = location
 
-        with pytest.MonkeyPatch.context() as mp:
-            import humidex
+        result = get_humidex("Test", geocoder=geocoder, fetcher=custom_fetcher)
 
-            mp.setattr(humidex, "geocode", lambda *a, **kw: mock_location)
-            mp.setattr(
-                humidex,
-                "calculate_humidex",
-                lambda *a, **kw: mock_result,
-            )
-
-            result = get_humidex("Test", fetcher=mock_fetcher)
-
-        mock_fetcher.fetch.assert_called_once()
-        assert result == mock_result
+        custom_fetcher.fetch.assert_called_once()
+        assert result.weather == weather
 
     def test_with_config(self) -> None:
         config = Config(retry_max=1)
-        mock_location = Location(name="Test", latitude=10.0, longitude=20.0)
-        mock_weather = MagicMock()
-        mock_result = MagicMock()
+        location = Location(name="Test", latitude=10.0, longitude=20.0)
+        weather = WeatherData(
+            temperature_c=22.0,
+            dewpoint_c=12.0,
+            forecast_step=0,
+            valid_time=datetime.now(tz=timezone.utc),
+        )
+        geocoder, fetcher = _make_fakes(location, weather)
 
-        with pytest.MonkeyPatch.context() as mp:
-            import humidex
+        result = get_humidex("Test", config=config, geocoder=geocoder, fetcher=fetcher)
 
-            mp.setattr(humidex, "geocode", lambda *a, **kw: mock_location)
-            mp.setattr(humidex, "fetch_weather_data", lambda *a, **kw: mock_weather)
-            mp.setattr(
-                humidex,
-                "calculate_humidex",
-                lambda *a, **kw: mock_result,
-            )
-
-            result = get_humidex("Test", config=config)
-
-        assert result == mock_result
+        assert result.location == location

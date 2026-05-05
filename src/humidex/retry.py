@@ -41,9 +41,9 @@ def retry_with_backoff(
     for attempt in range(max_retries + 1):
         try:
             return func()
-        except no_retry:
-            raise
         except Exception as e:
+            if isinstance(e, no_retry):
+                raise
             last_exception = e
             if attempt < max_retries:
                 if is_rate_limited and is_rate_limited(e):
@@ -52,15 +52,15 @@ def retry_with_backoff(
                     multiplier = 1.0
                 delay = base_backoff * (2**attempt) * multiplier
                 logger.warning(
-                    "Attempt %d failed, retrying in %.1fs: %s",
+                    "Attempt %d/%d failed, retrying in %.1fs: %s",
                     attempt + 1,
+                    max_retries + 1,
                     delay,
                     e,
                 )
                 time.sleep(delay)
             continue
 
-    msg = f"Operation failed after {max_retries + 1} attempts"
     if last_exception is None:
-        raise RuntimeError(msg)
-    raise type(last_exception)(msg) from last_exception
+        raise RuntimeError(f"Operation failed after {max_retries + 1} attempts")
+    raise last_exception

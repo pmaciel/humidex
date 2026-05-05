@@ -43,9 +43,9 @@ class TestHumidexClient:
         client = HumidexClient(geocoder=mock_geocoder, fetcher=mock_fetcher)
 
         with pytest.MonkeyPatch.context() as mp:
-            from humidex import calculator
+            from humidex import client as client_module
 
-            mp.setattr(calculator, "calculate_humidex", lambda *a, **kw: mock_result)
+            mp.setattr(client_module, "calculate_humidex", lambda *a, **kw: mock_result)
 
             result = client.get_humidex("Bangkok")
 
@@ -66,9 +66,9 @@ class TestHumidexClient:
         client = HumidexClient(geocoder=mock_geocoder, fetcher=mock_fetcher)
 
         with pytest.MonkeyPatch.context() as mp:
-            from humidex import calculator
+            from humidex import client as client_module
 
-            mp.setattr(calculator, "calculate_humidex", lambda *a, **kw: mock_result)
+            mp.setattr(client_module, "calculate_humidex", lambda *a, **kw: mock_result)
 
             result = client.get_humidex(mock_location)
 
@@ -90,9 +90,9 @@ class TestHumidexClient:
         client = HumidexClient(geocoder=mock_geocoder, fetcher=mock_fetcher)
 
         with pytest.MonkeyPatch.context() as mp:
-            from humidex import calculator
+            from humidex import client as client_module
 
-            mp.setattr(calculator, "calculate_humidex", lambda *a, **kw: mock_result)
+            mp.setattr(client_module, "calculate_humidex", lambda *a, **kw: mock_result)
 
             client.get_humidex("Test", step=12)
 

@@ -24,9 +24,7 @@ class TestNominatimGeocoder:
         mock_location.latitude = 13.7563
         mock_location.longitude = 100.5018
 
-        with patch.object(
-            geocoder._geolocator, "geocode", return_value=mock_location
-        ):
+        with patch.object(geocoder._geolocator, "geocode", return_value=mock_location):
             result = geocoder.geocode("Bangkok")
 
         assert isinstance(result, Location)
@@ -55,12 +53,38 @@ class TestNominatimGeocoder:
         mock_location.latitude = 51.5074
         mock_location.longitude = -0.1278
 
-        with patch.object(
-            geocoder._geolocator, "geocode", return_value=mock_location
-        ):
+        with patch.object(geocoder._geolocator, "geocode", return_value=mock_location):
             result = geocoder.geocode("London, UK")
 
         assert result.name == "London, UK"
+
+    def test_rate_limited_triggers_multiplier(self, config: Config) -> None:
+        """GeocoderRateLimited should retry with the rate-limit multiplier applied."""
+        from geopy.exc import GeocoderRateLimited
+
+        geocoder = NominatimGeocoder(config=config)
+
+        mock_location = MagicMock()
+        mock_location.latitude = 13.7563
+        mock_location.longitude = 100.5018
+
+        with (
+            patch.object(
+                geocoder._geolocator,
+                "geocode",
+                side_effect=[GeocoderRateLimited("slow down"), mock_location],
+            ),
+            patch("humidex.retry.time.sleep") as mock_sleep,
+        ):
+            result = geocoder.geocode("Bangkok")
+
+        assert result.latitude == pytest.approx(13.7563)
+        assert mock_sleep.call_count == 1
+        delay = mock_sleep.call_args_list[0][0][0]
+        # Multiplier (2.0) was applied vs the unmultiplied base delay
+        # base_backoff * 2**0 = config.retry_backoff (no multiplier)
+        assert delay > config.retry_backoff
+        assert delay == pytest.approx(config.retry_backoff * 2.0)
 
 
 class TestGeocodeConvenience:

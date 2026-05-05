@@ -10,18 +10,32 @@ import click
 import humidex
 from humidex.models import Location
 
+_ERROR_MESSAGES: dict[type[Exception], str] = {
+    humidex.PlaceNotFoundError: "Place not found: {place}",
+    humidex.GeocodingError: "Geocoding failed: {error}",
+    humidex.InvalidStepError: "Invalid forecast step: {error}",
+    humidex.DataFetchError: "Failed to fetch weather data: {error}",
+    humidex.CalculationError: "Failed to calculate humidex: {error}",
+}
 
-def _setup_logging(verbose: bool) -> None:
-    """Configure logging based on verbosity.
+
+def _setup_logging(verbose: int) -> None:
+    """Configure logging based on verbosity count.
 
     Args:
-        verbose: If True, set log level to DEBUG.
+        verbose: Verbosity level. 0=WARNING, 1=INFO, 2+=DEBUG.
     """
-    level = logging.DEBUG if verbose else logging.WARNING
+    if verbose >= 2:
+        level = logging.DEBUG
+    elif verbose == 1:
+        level = logging.INFO
+    else:
+        level = logging.WARNING
     logging.basicConfig(
         level=level,
         format="%(levelname)s: %(message)s",
         stream=sys.stderr,
+        force=True,
     )
 
 
@@ -32,20 +46,8 @@ def _handle_error(error: Exception, place: str) -> None:
         error: The exception to handle.
         place: The place name that caused the error.
     """
-    match error:
-        case humidex.PlaceNotFoundError():
-            msg = f"Place not found: {place}"
-        case humidex.GeocodingError():
-            msg = f"Geocoding failed: {error}"
-        case humidex.InvalidStepError():
-            msg = f"Invalid forecast step: {error}"
-        case humidex.DataFetchError():
-            msg = f"Failed to fetch weather data: {error}"
-        case humidex.CalculationError():
-            msg = f"Failed to calculate humidex: {error}"
-        case _:
-            msg = f"Unexpected error: {error}"
-
+    template = _ERROR_MESSAGES.get(type(error), "Unexpected error: {error}")
+    msg = template.format(place=place, error=error)
     click.echo(f"Error: {msg}", err=True)
 
 
@@ -54,7 +56,9 @@ def _handle_error(error: Exception, place: str) -> None:
 @click.option("--lat", type=float, default=None, help="Latitude in decimal degrees.")
 @click.option("--lon", type=float, default=None, help="Longitude in decimal degrees.")
 @click.option(
-    "--name", type=str, default=None,
+    "--name",
+    type=str,
+    default=None,
     help="Location name (used with --lat/--lon).",
 )
 @click.option(
@@ -71,7 +75,12 @@ def _handle_error(error: Exception, place: str) -> None:
     default=False,
     help="Output as JSON.",
 )
-@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output.")
+@click.option(
+    "--verbose",
+    "-v",
+    count=True,
+    help="Enable verbose output (-v for INFO, -vv for DEBUG).",
+)
 def main(
     place: str | None,
     lat: float | None,
@@ -79,7 +88,7 @@ def main(
     name: str | None,
     step: int,
     as_json: bool,
-    verbose: bool,
+    verbose: int,
 ) -> None:
     """Get the humidex for a location using ECMWF open data.
 
@@ -92,7 +101,25 @@ def main(
         humidex "London" --step 12
         humidex "Singapore" --json
     """
-    if place is None and (lat is None or lon is None):
+    # Mutually exclusive: PLACE vs --lat/--lon
+    if place is not None and (lat is not None or lon is not None):
+        click.echo(
+            "Error: PLACE and --lat/--lon are mutually exclusive; "
+            "provide either PLACE or both --lat and --lon",
+            err=True,
+        )
+        sys.exit(1)
+
+    # --lat and --lon must be provided together
+    if (lat is None) != (lon is None):
+        click.echo(
+            "Error: --lat and --lon must be provided together; "
+            "specify both --lat and --lon",
+            err=True,
+        )
+        sys.exit(1)
+
+    if place is None and lat is None and lon is None:
         click.echo("Error: Provide either PLACE or both --lat and --lon", err=True)
         sys.exit(1)
 
@@ -103,9 +130,12 @@ def main(
             location_name = name or f"({lat:.4f}, {lon:.4f})"
             location = Location(name=location_name, latitude=lat, longitude=lon)
             result = humidex.get_humidex(location, step=step)
-        else:
-            assert place is not None
+        elif place is not None:
             result = humidex.get_humidex(place, step=step)
+        else:
+            # Unreachable due to validation above; satisfies type checker.
+            click.echo("Error: Provide either PLACE or both --lat and --lon", err=True)
+            sys.exit(1)
     except (
         humidex.PlaceNotFoundError,
         humidex.GeocodingError,
@@ -119,4 +149,4 @@ def main(
     if as_json:
         click.echo(humidex.format_json(result))
     else:
-        click.echo(humidex.format_human(result, verbose=verbose))
+        click.echo(humidex.format_human(result, verbose=bool(verbose)))

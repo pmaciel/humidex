@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TypedDict
+from typing import Final, TypedDict
+
+MIN_LAT: Final[float] = -90.0
+MAX_LAT: Final[float] = 90.0
+MIN_LON: Final[float] = -180.0
+MAX_LON: Final[float] = 180.0
+MIN_TEMP_C: Final[float] = -90.0
+MAX_TEMP_C: Final[float] = 60.0
 
 
 class HumidexResultDict(TypedDict):
@@ -37,11 +44,16 @@ class Location:
 
     def __post_init__(self) -> None:
         """Validate coordinate ranges."""
-        if not -90 <= self.latitude <= 90:
-            msg = f"Latitude must be between -90 and 90, got {self.latitude}"
+        if not MIN_LAT <= self.latitude <= MAX_LAT:
+            msg = (
+                f"Latitude must be between {MIN_LAT} and {MAX_LAT}, got {self.latitude}"
+            )
             raise ValueError(msg)
-        if not -180 <= self.longitude <= 180:
-            msg = f"Longitude must be between -180 and 180, got {self.longitude}"
+        if not MIN_LON <= self.longitude <= MAX_LON:
+            msg = (
+                f"Longitude must be between {MIN_LON} and {MAX_LON}, "
+                f"got {self.longitude}"
+            )
             raise ValueError(msg)
 
     def __str__(self) -> str:
@@ -67,16 +79,16 @@ class WeatherData:
 
     def __post_init__(self) -> None:
         """Validate weather data ranges."""
-        if not -90 <= self.temperature_c <= 60:
+        if not MIN_TEMP_C <= self.temperature_c <= MAX_TEMP_C:
             msg = (
                 f"Temperature out of range: {self.temperature_c}°C "
-                f"(valid: -90 to 60)"
+                f"(valid: {MIN_TEMP_C} to {MAX_TEMP_C})"
             )
             raise ValueError(msg)
-        if not -90 <= self.dewpoint_c <= 60:
+        if not MIN_TEMP_C <= self.dewpoint_c <= MAX_TEMP_C:
             msg = (
                 f"Dewpoint out of range: {self.dewpoint_c}°C "
-                f"(valid: -90 to 60)"
+                f"(valid: {MIN_TEMP_C} to {MAX_TEMP_C})"
             )
             raise ValueError(msg)
         if self.forecast_step < 0:
@@ -105,9 +117,7 @@ class HumidexResult:
 
     def __str__(self) -> str:
         """Return human-readable string representation."""
-        return (
-            f"{self.location.name}: Humidex {self.humidex:.1f}\u00b0C - {self.comfort}"
-        )
+        return f"{self.location.name}: Humidex {self.humidex:.1f}°C - {self.comfort}"
 
     def to_dict(self) -> HumidexResultDict:
         """Convert to dictionary for JSON serialization.
