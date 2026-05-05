@@ -1,0 +1,21 @@
+Metadata-Version: 2.4
+Name: humidex
+Version: 0.1.0
+Summary: Retrieve humidex values for any location using ECMWF open data
+Author: Humidex Contributors
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: ecmwf-opendata>=0.3.0
+Requires-Dist: thermofeel>=2.0.0
+Requires-Dist: geopy>=2.4.0
+Requires-Dist: xarray>=2024.0.0
+Requires-Dist: cfgrib>=0.9.14
+Requires-Dist: click>=8.1.0
+Requires-Dist: numpy>=1.24.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.1.0; extra == "dev"
+Requires-Dist: ruff>=0.1.0; extra == "dev"
+Requires-Dist: mypy>=1.7.0; extra == "dev"
+Requires-Dist: types-requests; extra == "dev"

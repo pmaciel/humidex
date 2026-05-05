@@ -1,0 +1,8 @@
+pyproject.toml
+src/humidex/__init__.py
+src/humidex.egg-info/PKG-INFO
+src/humidex.egg-info/SOURCES.txt
+src/humidex.egg-info/dependency_links.txt
+src/humidex.egg-info/entry_points.txt
+src/humidex.egg-info/requires.txt
+src/humidex.egg-info/top_level.txt
