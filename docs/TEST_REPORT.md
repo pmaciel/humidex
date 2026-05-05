@@ -1,31 +1,39 @@
-# Test Report
+# Test Report v2
 
 ## Summary
 
-All tests pass with 90% code coverage, exceeding the 80% target.
+All 81 tests pass with 90% code coverage. All quality checks pass: linting (ruff), type checking (mypy), and coverage (pytest-cov).
 
 ## Test Results
 
 | Test File | Tests | Passed | Failed | Coverage |
 |-----------|-------|--------|--------|----------|
-| test_models.py | 5 | 5 | 0 | 100% |
-| test_geocoder.py | 4 | 4 | 0 | 100% |
-| test_data_fetcher.py | 4 | 4 | 0 | 78% |
-| test_calculator.py | 7 | 7 | 0 | 95% |
-| test_cli.py | 7 | 7 | 0 | 93% |
-| **Total** | **27** | **27** | **0** | **90%** |
+| test_api.py | 4 | 4 | 0 | - |
+| test_calculator.py | 14 | 14 | 0 | 89% |
+| test_cli.py | 7 | 7 | 0 | 84% |
+| test_config.py | 7 | 7 | 0 | 100% |
+| test_fetcher.py | 12 | 12 | 0 | 79% |
+| test_formatter.py | 6 | 6 | 0 | 100% |
+| test_geocoder.py | 5 | 5 | 0 | 90% |
+| test_models.py | 19 | 19 | 0 | 100% |
+| test_protocols.py | 7 | 7 | 0 | 100% |
+| **Total** | **81** | **81** | **0** | **90%** |
 
 ## Module Coverage
 
 | Module | Statements | Missed | Coverage |
 |--------|------------|--------|----------|
-| `__init__.py` | 11 | 3 | 73% |
-| `calculator.py` | 20 | 1 | 95% |
-| `cli.py` | 41 | 3 | 93% |
-| `data_fetcher.py` | 50 | 11 | 78% |
-| `geocoder.py` | 25 | 0 | 100% |
-| `models.py` | 29 | 0 | 100% |
-| **Total** | **176** | **18** | **90%** |
+| `__init__.py` | 19 | 0 | 100% |
+| `calculator.py` | 27 | 3 | 89% |
+| `cli.py` | 38 | 6 | 84% |
+| `config.py` | 30 | 0 | 100% |
+| `errors.py` | 15 | 0 | 100% |
+| `fetcher.py` | 99 | 21 | 79% |
+| `formatter.py` | 12 | 0 | 100% |
+| `geocoder.py` | 58 | 6 | 90% |
+| `models.py` | 43 | 0 | 100% |
+| `protocols.py` | 9 | 0 | 100% |
+| **Total** | **350** | **36** | **90%** |
 
 ## Quality Checks
 
@@ -33,19 +41,20 @@ All tests pass with 90% code coverage, exceeding the 80% target.
 |-------|--------|
 | Linting (ruff) | ✅ Pass |
 | Type checking (mypy) | ✅ Pass |
-| Unit tests | ✅ 27/27 Pass |
+| Unit tests | ✅ 81/81 Pass |
 | Integration test (real ECMWF data) | ✅ Pass |
 | Coverage (80% target) | ✅ 90% |
+| Python 3.10+ compatibility | ✅ Pass |
 
-## Integration Test Results
+## v2 Improvements Over v1
 
-Successfully tested end-to-end with real ECMWF data:
-
-- **Bangkok**: Humidex 43.9°C - Great discomfort; avoid exertion
-- **London**: Humidex 12.3°C - Comfortable
-
-## Notes
-
-- `__init__.py` coverage is 73% due to the `get_humidex()` function which requires network calls (covered by integration test)
-- `data_fetcher.py` coverage is 78% due to the `_read_grib_at_location()` function which requires actual GRIB files (covered by integration test)
-- All error paths are tested with mocked exceptions
+1. **Dependency injection** — Protocol-based interfaces for Geocoder and WeatherFetcher
+2. **Retry with backoff** — All network operations retry with exponential backoff
+3. **Configuration** — Environment variable support, centralized Config class
+4. **Frozen dataclasses** — Immutable models with proper validation
+5. **Resource management** — Context managers for GRIB file handling
+6. **Centralized errors** — Consistent exception hierarchy in errors.py
+7. **Data validation** — NaN/Inf checks, range validation on extracted values
+8. **Formatter module** — Separated output formatting from models and CLI
+9. **Clean API** — Explicit `__all__`, proper imports, no circular dependencies
+10. **Better tests** — conftest.py fixtures, parametrized tests, class-based organization

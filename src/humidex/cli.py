@@ -2,25 +2,50 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import sys
 
 import click
 
-from humidex import get_humidex
-from humidex.data_fetcher import DataFetchError
-from humidex.geocoder import GeocoderError, PlaceNotFoundError
+import humidex
 
 
-def setup_logging(verbose: bool) -> None:
+def _setup_logging(verbose: bool) -> None:
     """Configure logging based on verbosity.
 
     Args:
         verbose: If True, set log level to DEBUG.
     """
     level = logging.DEBUG if verbose else logging.WARNING
-    logging.basicConfig(level=level, format="%(levelname)s: %(message)s")
+    logging.basicConfig(
+        level=level,
+        format="%(levelname)s: %(message)s",
+        stream=sys.stderr,
+    )
+
+
+def _handle_error(error: Exception, place: str) -> None:
+    """Handle known errors and exit with appropriate message.
+
+    Args:
+        error: The exception to handle.
+        place: The place name that caused the error.
+    """
+    match error:
+        case humidex.PlaceNotFoundError():
+            msg = f"Place not found: {place}"
+        case humidex.GeocodingError():
+            msg = f"Geocoding failed: {error}"
+        case humidex.InvalidStepError():
+            msg = f"Invalid forecast step: {error}"
+        case humidex.DataFetchError():
+            msg = f"Failed to fetch weather data: {error}"
+        case humidex.CalculationError():
+            msg = f"Failed to calculate humidex: {error}"
+        case _:
+            msg = f"Unexpected error: {error}"
+
+    click.echo(f"Error: {msg}", err=True)
 
 
 @click.command()
@@ -50,45 +75,21 @@ def main(place: str, step: int, as_json: bool, verbose: bool) -> None:
         humidex "London" --step 12
         humidex "Singapore" --json
     """
-    setup_logging(verbose)
+    _setup_logging(verbose)
 
     try:
-        result = get_humidex(place, step=step)
-    except PlaceNotFoundError:
-        click.echo(f"Error: Place not found: {place}", err=True)
-        sys.exit(1)
-    except GeocoderError as e:
-        click.echo(f"Error: Geocoding failed: {e}", err=True)
-        sys.exit(1)
-    except DataFetchError as e:
-        click.echo(f"Error: Failed to fetch weather data: {e}", err=True)
+        result = humidex.get_humidex(place, step=step)
+    except (
+        humidex.PlaceNotFoundError,
+        humidex.GeocodingError,
+        humidex.InvalidStepError,
+        humidex.DataFetchError,
+        humidex.CalculationError,
+    ) as e:
+        _handle_error(e, place)
         sys.exit(1)
 
     if as_json:
-        output = {
-            "location": result.location.name,
-            "latitude": result.location.latitude,
-            "longitude": result.location.longitude,
-            "humidex": result.humidex,
-            "comfort": result.comfort,
-            "temperature_c": result.weather.temperature_c,
-            "dewpoint_c": result.weather.dewpoint_c,
-            "forecast_step": result.weather.forecast_step,
-            "valid_time": result.weather.valid_time.isoformat(),
-        }
-        click.echo(json.dumps(output, indent=2))
+        click.echo(humidex.format_json(result))
     else:
-        click.echo(str(result))
-        click.echo(f"  Temperature: {result.weather.temperature_c:.1f}°C")
-        click.echo(f"  Dewpoint: {result.weather.dewpoint_c:.1f}°C")
-        if verbose:
-            click.echo(
-                f"  Coordinates: ({result.location.latitude:.4f}, "
-                f"{result.location.longitude:.4f})"
-            )
-            click.echo(f"  Forecast step: {result.weather.forecast_step}h")
-            click.echo(f"  Valid time: {result.weather.valid_time}")
-
-
-if __name__ == "__main__":
-    main()
+        click.echo(humidex.format_human(result, verbose=verbose))

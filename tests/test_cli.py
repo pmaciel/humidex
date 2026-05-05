@@ -1,108 +1,109 @@
 """Tests for CLI module."""
 
-from datetime import datetime
-from unittest.mock import MagicMock, patch
-
 import pytest
 from click.testing import CliRunner
 
 from humidex.cli import main
-from humidex.models import HumidexResult, Location, WeatherData
+from humidex.models import HumidexResult
 
 
-@pytest.fixture
-def runner() -> CliRunner:
-    """Create CLI test runner."""
-    return CliRunner()
+class TestCLI:
+    """Tests for CLI main command."""
 
+    def test_human_output(self, hot_result: "HumidexResult") -> None:
+        runner = CliRunner()
+        with pytest.MonkeyPatch.context() as mp:
+            import humidex.cli
 
-@pytest.fixture
-def mock_result() -> HumidexResult:
-    """Create a mock humidex result."""
-    loc = Location(name="Bangkok", latitude=13.7563, longitude=100.5018)
-    weather = WeatherData(
-        temperature_c=32.0,
-        dewpoint_c=24.0,
-        forecast_step=0,
-        valid_time=datetime(2026, 5, 5, 12, 0),
-    )
-    return HumidexResult(
-        location=loc,
-        humidex=40.2,
-        comfort="Great discomfort; avoid exertion",
-        weather=weather,
-    )
+            mp.setattr(humidex.cli.humidex, "get_humidex", lambda *a, **kw: hot_result)
+            result = runner.invoke(main, ["Bangkok"])
 
+        assert result.exit_code == 0
+        assert "Bangkok" in result.output
+        assert "40.2" in result.output
+        assert "Great discomfort" in result.output
 
-def test_cli_human_output(runner: CliRunner, mock_result: HumidexResult) -> None:
-    """Test CLI human-readable output."""
-    with patch("humidex.cli.get_humidex", return_value=mock_result):
-        result = runner.invoke(main, ["Bangkok"])
+    def test_json_output(self, hot_result: "HumidexResult") -> None:
+        runner = CliRunner()
+        with pytest.MonkeyPatch.context() as mp:
+            import humidex.cli
 
-    assert result.exit_code == 0
-    assert "Bangkok" in result.output
-    assert "40.2" in result.output
-    assert "Great discomfort" in result.output
-    assert "Temperature: 32.0" in result.output
-    assert "Dewpoint: 24.0" in result.output
+            mp.setattr(humidex.cli.humidex, "get_humidex", lambda *a, **kw: hot_result)
+            result = runner.invoke(main, ["Bangkok", "--json"])
 
+        assert result.exit_code == 0
+        assert '"location": "Bangkok"' in result.output
+        assert '"humidex": 40.2' in result.output
 
-def test_cli_json_output(runner: CliRunner, mock_result: HumidexResult) -> None:
-    """Test CLI JSON output."""
-    with patch("humidex.cli.get_humidex", return_value=mock_result):
-        result = runner.invoke(main, ["Bangkok", "--json"])
+    def test_verbose_output(self, hot_result: "HumidexResult") -> None:
+        runner = CliRunner()
+        with pytest.MonkeyPatch.context() as mp:
+            import humidex.cli
 
-    assert result.exit_code == 0
-    assert '"location": "Bangkok"' in result.output
-    assert '"humidex": 40.2' in result.output
-    assert '"comfort"' in result.output
+            mp.setattr(humidex.cli.humidex, "get_humidex", lambda *a, **kw: hot_result)
+            result = runner.invoke(main, ["Bangkok", "--verbose"])
 
+        assert result.exit_code == 0
+        assert "Coordinates:" in result.output
 
-def test_cli_verbose_output(runner: CliRunner, mock_result: HumidexResult) -> None:
-    """Test CLI verbose output."""
-    with patch("humidex.cli.get_humidex", return_value=mock_result):
-        result = runner.invoke(main, ["Bangkok", "--verbose"])
+    def test_with_step(self, hot_result: "HumidexResult") -> None:
+        runner = CliRunner()
+        call_args = {}
 
-    assert result.exit_code == 0
-    assert "Coordinates:" in result.output
-    assert "Forecast step:" in result.output
-    assert "Valid time:" in result.output
+        def mock_get_humidex(
+            place: str, step: int = 0, **kw: object
+        ) -> HumidexResult:
+            call_args["place"] = place
+            call_args["step"] = step
+            return hot_result
 
+        with pytest.MonkeyPatch.context() as mp:
+            import humidex.cli
 
-def test_cli_with_step(runner: CliRunner, mock_result: HumidexResult) -> None:
-    """Test CLI with forecast step option."""
-    with patch("humidex.cli.get_humidex", return_value=mock_result) as mock_get:
-        runner.invoke(main, ["Bangkok", "--step", "12"])
+            mp.setattr(humidex.cli.humidex, "get_humidex", mock_get_humidex)
+            runner.invoke(main, ["Bangkok", "--step", "12"])
 
-    mock_get.assert_called_once_with("Bangkok", step=12)
+        assert call_args["place"] == "Bangkok"
+        assert call_args["step"] == 12
 
+    def test_place_not_found(self) -> None:
+        runner = CliRunner()
 
-def test_cli_place_not_found(runner: CliRunner) -> None:
-    """Test CLI when place is not found."""
-    from humidex.geocoder import PlaceNotFoundError
+        def raise_not_found(*a: object, **kw: object) -> None:
+            from humidex import PlaceNotFoundError
 
-    with patch("humidex.cli.get_humidex", side_effect=PlaceNotFoundError("Not found")):
-        result = runner.invoke(main, ["NonexistentPlace123"])
+            raise PlaceNotFoundError("Not found")
 
-    assert result.exit_code == 1
-    assert "Place not found" in result.output
+        with pytest.MonkeyPatch.context() as mp:
+            import humidex.cli
 
+            mp.setattr(humidex.cli.humidex, "get_humidex", raise_not_found)
+            result = runner.invoke(main, ["NonexistentPlace123"])
 
-def test_cli_data_fetch_error(runner: CliRunner) -> None:
-    """Test CLI when data fetch fails."""
-    from humidex.data_fetcher import DataFetchError
+        assert result.exit_code == 1
+        assert "Place not found" in result.output
 
-    with patch("humidex.cli.get_humidex", side_effect=DataFetchError("Network error")):
-        result = runner.invoke(main, ["Bangkok"])
+    def test_data_fetch_error(self) -> None:
+        runner = CliRunner()
 
-    assert result.exit_code == 1
-    assert "Failed to fetch weather data" in result.output
+        def raise_fetch_error(*a: object, **kw: object) -> None:
+            from humidex import DataFetchError
 
+            raise DataFetchError("Network error")
 
-def test_cli_help(runner: CliRunner) -> None:
-    """Test CLI help output."""
-    result = runner.invoke(main, ["--help"])
+        with pytest.MonkeyPatch.context() as mp:
+            import humidex.cli
 
-    assert result.exit_code == 0
-    assert "humidex" in result.output.lower()
-    assert "PLACE" in result.output
+            mp.setattr(humidex.cli.humidex, "get_humidex", raise_fetch_error)
+            result = runner.invoke(main, ["Bangkok"])
+
+        assert result.exit_code == 1
+        assert "Failed to fetch weather data" in result.output
+
+    def test_help(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(main, ["--help"])
+
+        assert result.exit_code == 0
+        assert "humidex" in result.output.lower()
+        assert "PLACE" in result.output
