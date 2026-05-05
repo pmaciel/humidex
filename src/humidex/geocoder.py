@@ -3,73 +3,21 @@
 from __future__ import annotations
 
 import logging
-import time
-from collections.abc import Callable
-from typing import TypeVar
 
-from geopy.exc import GeocoderQueryError, GeocoderRateLimited, GeocoderUnavailable
+from geopy.exc import GeocoderRateLimited
 from geopy.geocoders import Nominatim
 
 from humidex.config import Config, get_config
 from humidex.errors import GeocodingServiceError, PlaceNotFoundError
 from humidex.models import Location
 from humidex.protocols import Geocoder
+from humidex.retry import retry_with_backoff
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T")
 
-
-def _retry_with_backoff(
-    func: Callable[[], T],
-    max_retries: int,
-    base_backoff: float,
-) -> T:
-    """Execute a function with exponential backoff retry.
-
-    Args:
-        func: Function to execute.
-        max_retries: Maximum number of retries.
-        base_backoff: Base backoff in seconds.
-
-    Returns:
-        Result of the function.
-
-    Raises:
-        Last exception if all retries fail.
-    """
-    last_exception: Exception | None = None
-
-    for attempt in range(max_retries + 1):
-        try:
-            return func()
-        except (GeocoderUnavailable, GeocoderQueryError) as e:
-            last_exception = e
-            if attempt < max_retries:
-                delay = base_backoff * (2**attempt)
-                logger.warning(
-                    "Geocoding attempt %d failed, retrying in %.1fs: %s",
-                    attempt + 1,
-                    delay,
-                    e,
-                )
-                time.sleep(delay)
-            continue
-        except GeocoderRateLimited as e:
-            last_exception = e
-            if attempt < max_retries:
-                delay = base_backoff * (2**attempt) * 2
-                logger.warning(
-                    "Rate limited, retrying in %.1fs: %s",
-                    delay,
-                    e,
-                )
-                time.sleep(delay)
-            continue
-        raise
-
-    msg = f"Geocoding failed after {max_retries + 1} attempts"
-    raise GeocodingServiceError(msg, place_name=None) from last_exception
+def _is_rate_limited(exc: Exception) -> bool:
+    return isinstance(exc, GeocoderRateLimited)
 
 
 class NominatimGeocoder(Geocoder):
@@ -117,11 +65,20 @@ class NominatimGeocoder(Geocoder):
                 longitude=result.longitude,
             )
 
-        location = _retry_with_backoff(
-            _do_geocode,
-            max_retries=self._config.retry_max,
-            base_backoff=self._config.retry_backoff,
-        )
+        try:
+            location = retry_with_backoff(
+                _do_geocode,
+                max_retries=self._config.retry_max,
+                base_backoff=self._config.retry_backoff,
+                rate_limit_multiplier=2.0,
+                is_rate_limited=_is_rate_limited,
+                no_retry=(PlaceNotFoundError,),
+            )
+        except PlaceNotFoundError:
+            raise
+        except Exception as e:
+            msg = f"Geocoding failed after {self._config.retry_max + 1} attempts"
+            raise GeocodingServiceError(msg, place_name=place_name) from e
 
         logger.info(
             "Geocoded '%s' to (%.4f, %.4f)",
@@ -130,30 +87,6 @@ class NominatimGeocoder(Geocoder):
             location.longitude,
         )
         return location
-
-
-_default_geocoder: NominatimGeocoder | None = None
-
-
-def get_geocoder(config: Config | None = None) -> NominatimGeocoder:
-    """Get or create the default geocoder.
-
-    Args:
-        config: Optional configuration override.
-
-    Returns:
-        NominatimGeocoder instance.
-    """
-    global _default_geocoder
-    if _default_geocoder is None or config is not None:
-        _default_geocoder = NominatimGeocoder(config=config)
-    return _default_geocoder
-
-
-def reset_geocoder() -> None:
-    """Reset the default geocoder. Useful for testing."""
-    global _default_geocoder
-    _default_geocoder = None
 
 
 def geocode(place_name: str, config: Config | None = None) -> Location:
@@ -170,4 +103,4 @@ def geocode(place_name: str, config: Config | None = None) -> Location:
         PlaceNotFoundError: If the place cannot be found.
         GeocodingServiceError: If the service is unavailable.
     """
-    return get_geocoder(config).geocode(place_name)
+    return NominatimGeocoder(config=config).geocode(place_name)

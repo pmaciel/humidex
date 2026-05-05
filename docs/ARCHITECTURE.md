@@ -1,158 +1,81 @@
-# Architecture: Humidex CLI
+# Architecture - v3.0
 
-## Overview
+## v2.0 Assessment
 
-A Python module and CLI tool that retrieves the humidex (perceived temperature in hot, humid weather) for a given location using ECMWF open data. Users provide a place name (e.g., "Bangkok", "London") and receive a human-readable humidex value with comfort description.
+v2.0 is solid: clean module separation, dependency injection via Protocols, retry logic, frozen models, centralized config/errors. The following improvements are identified for v3.0.
 
-## System Architecture
+## v3.0 Improvements
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                        CLI (click)                      │
-│              humidex "Bangkok" [--step 0]               │
-└────────────────────┬────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│                   humidex package                       │
-├─────────────────┬──────────────────┬────────────────────┤
-│   geocoder.py   │  data_fetcher.py │  calculator.py     │
-│                 │                  │                    │
-│ Place name →    │ Coordinates →    │ Temp + Dewpoint →  │
-│ Coordinates     │ GRIB data        │ Humidex value      │
-│ (geopy/Nominatim│ (ecmwf-opendata) │ (thermofeel)       │
-└─────────────────┴──────────────────┴────────────────────┘
-```
+### 1. Extract Shared Retry Logic
 
-## Components
+**Problem:** `_retry_with_backoff` and `T = TypeVar("T")` are duplicated in `geocoder.py` and `fetcher.py`.
 
-### 1. Geocoder (`src/humidex/geocoder.py`)
+**Solution:** Create `src/humidex/retry.py` with a single, well-tested retry implementation. Both modules import from it.
 
-Converts human-readable place names to latitude/longitude coordinates.
+### 2. Eliminate Global Mutable Singletons
 
-- Uses `geopy` with `Nominatim` backend (free, no API key required)
-- Returns `(lat, lon)` tuple
-- Handles ambiguous places by selecting first result or prompting
+**Problem:** `_DEFAULT_CONFIG`, `_default_geocoder`, `_default_fetcher` with `get_*`/`set_*`/`reset_*` functions create hidden mutable state that makes testing harder and is not thread-safe.
 
-### 2. Data Fetcher (`src/humidex/data_fetcher.py`)
+**Solution:** Replace with a `HumidexClient` class that holds config, geocoder, and fetcher as instance attributes. The convenience functions remain for backwards compatibility but delegate to a lazily-created client. This removes all module-level globals except one lazy-initialized client.
 
-Retrieves weather data from ECMWF open data.
+### 3. Fix Late Import in `fetcher.py`
 
-- Uses `ecmwf-opendata` Python client
-- Fetches `2t` (2m temperature, K) and `2d` (2m dewpoint temperature, K)
-- Supports forecast step selection (0 = analysis, 3-144 = forecast hours)
-- Downloads GRIB2 files and reads with `xarray` + `cfgrib` engine
-- Extracts values at nearest grid point to given coordinates
+**Problem:** `from datetime import datetime` is inside `_parse_grib` (line 225).
 
-### 3. Calculator (`src/humidex/calculator.py`)
+**Solution:** Move to top-level imports.
 
-Computes humidex from temperature and dewpoint.
+### 4. Add `TypedDict` for Serialization
 
-- Uses ECMWF's `thermofeel` library for calculation
-- Converts Kelvin to Celsius before calculation
-- Returns humidex value and comfort category:
-  - `< 20`: Comfortable
-  - `20-29`: Little discomfort
-  - `30-39`: Some discomfort
-  - `40-45`: Great discomfort; avoid exertion
-  - `≥ 46`: Dangerous; possible heat stroke
+**Problem:** `HumidexResult.to_dict()` returns `dict[str, float | str | int]` — no structure enforced.
 
-### 4. CLI (`src/humidex/cli.py`)
+**Solution:** Define `HumidexResultDict` TypedDict for type-safe serialization.
 
-Command-line interface using `click`.
+### 5. Support Coordinate Input
 
-- Accepts place name as positional argument
-- Optional: `--step` for forecast hour (default: 0)
-- Optional: `--json` for machine-readable output
-- Outputs human-readable result by default
+**Problem:** Only place names are accepted as input. Users with known coordinates must go through geocoding unnecessarily.
 
-## Data Flow
+**Solution:** Add `get_humidex_by_coords(lat, lon, name, ...)` or accept `Location | str` as the first argument.
+
+### 6. Export Missing `reset_config` from `__init__.py`
+
+**Problem:** `reset_config` and `reset_geocoder`/`reset_fetcher` exist but aren't in `__all__`.
+
+**Solution:** Add `reset_config` to `__all__` for testing consistency.
+
+### 7. Improve Temp File Handling in `fetcher.py`
+
+**Problem:** `NamedTemporaryFile(suffix=".grib2", delete=False)` then manual cleanup in `finally` is error-prone.
+
+**Solution:** Use a proper context manager or `tempfile.mkstemp` pattern.
+
+### 8. Narrow Exception Handling
+
+**Problem:** `calculator.py:72` and `fetcher.py:238` catch bare `Exception`.
+
+**Solution:** Catch specific exceptions from `thermofeel` and `xarray`/`cfgrib` where possible, falling back to a documented `Exception` catch with a comment explaining why.
+
+### 9. Version Bump to 3.0.0
+
+Update all version strings to `3.0.0`.
+
+## v3.0 Directory Structure
 
 ```
-User input: "Bangkok"
-    │
-    ▼
-Geocoder: geopy.Nominatim → (13.7563, 100.5018)
-    │
-    ▼
-Data Fetcher: ecmwf-opendata → GRIB file → xarray → temp=305.15K, dew=297.15K
-    │
-    ▼
-Calculator: thermofeel.humidex(t=32°C, td=24°C) → 40.2
-    │
-    ▼
-Output: "Bangkok: Humidex 40.2°C - Great discomfort; avoid exertion"
+src/humidex/
+├── __init__.py          # Public API, version 3.0.0
+├── models.py            # Data models + TypedDict
+├── errors.py            # Custom exceptions (no change)
+├── config.py            # Config (remove global state)
+├── retry.py             # Shared retry logic (NEW)
+├── protocols.py         # Dependency injection protocols
+├── geocoder.py          # Nominatim geocoder (use shared retry)
+├── fetcher.py           # ECMWF fetcher (use shared retry, fix imports)
+├── calculator.py        # Humidex calculation (narrow exceptions)
+├── formatter.py         # Output formatting (no change)
+├── client.py            # HumidexClient class (NEW)
+└── cli.py               # CLI (no change)
 ```
 
-## Tech Stack
+## Backwards Compatibility
 
-| Component | Package | Purpose |
-|-----------|---------|---------|
-| ECMWF data | `ecmwf-opendata` | Download forecast data |
-| GRIB reading | `xarray`, `cfgrib`, `eccodes` | Parse GRIB2 files |
-| Humidex calc | `thermofeel` | Thermal comfort index calculation |
-| Geocoding | `geopy` | Place name → coordinates |
-| CLI | `click` | Command-line interface |
-| Testing | `pytest`, `pytest-cov` | Unit and integration tests |
-| Linting | `ruff` | Code quality |
-| Type checking | `mypy` | Static type analysis |
-
-## Data Model
-
-```python
-@dataclass
-class Location:
-    name: str
-    latitude: float
-    longitude: float
-
-@dataclass
-class WeatherData:
-    temperature_c: float
-    dewpoint_c: float
-    forecast_step: int
-    valid_time: datetime
-
-@dataclass
-class HumidexResult:
-    location: Location
-    humidex: float
-    comfort: str
-    weather: WeatherData
-```
-
-## Project Structure
-
-```
-humidex/
-├── src/
-│   └── humidex/
-│       ├── __init__.py
-│       ├── cli.py
-│       ├── geocoder.py
-│       ├── data_fetcher.py
-│       └── calculator.py
-├── tests/
-│   ├── __init__.py
-│   ├── test_geocoder.py
-│   ├── test_data_fetcher.py
-│   └── test_calculator.py
-├── docs/
-│   ├── ARCHITECTURE.md
-│   └── TEST_REPORT.md
-├── pyproject.toml
-├── AGENTS.md
-└── README.md
-```
-
-## External Services
-
-- **ECMWF Open Data**: Free, no API key required. Limited to 500 simultaneous connections. Rolling 2-3 day archive.
-- **Nominatim (OpenStreetMap)**: Free geocoding. Requires User-Agent header. Rate limited to 1 request/second.
-
-## Error Handling
-
-- Geocoding failures (place not found)
-- ECMWF data unavailability (network issues, no forecast)
-- Invalid coordinates (out of range)
-- Graceful degradation with informative error messages
+All existing public API functions (`get_humidex`, `geocode`, `fetch_weather_data`, `calculate_humidex`, `format_human`, `format_json`) remain unchanged. The new `HumidexClient` class is an additional entry point for users who want explicit dependency management.

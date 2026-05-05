@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import logging
 import math
-import time
-from collections.abc import Callable
+import tempfile
+from datetime import datetime
 from pathlib import Path
-from tempfile import NamedTemporaryFile
-from typing import TypeVar
 
 import numpy as np
 import xarray as xr
@@ -18,10 +16,9 @@ from humidex.config import Config, get_config
 from humidex.errors import DataFetchError, DataParseError, InvalidStepError
 from humidex.models import Location, WeatherData
 from humidex.protocols import WeatherFetcher
+from humidex.retry import retry_with_backoff
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar("T")
 
 ECMWF_PARAMS: tuple[str, str] = ("2t", "2d")
 VALID_STEPS: frozenset[int] = frozenset(
@@ -48,46 +45,6 @@ def _validate_step(step: int) -> None:
             f"Valid steps: 0-144 by 3, 144-240 by 6 (e.g., {valid_examples})"
         )
         raise InvalidStepError(msg)
-
-
-def _retry_with_backoff(
-    func: Callable[[], T],
-    max_retries: int,
-    base_backoff: float,
-) -> T:
-    """Execute a function with exponential backoff retry.
-
-    Args:
-        func: Function to execute.
-        max_retries: Maximum number of retries.
-        base_backoff: Base backoff in seconds.
-
-    Returns:
-        Result of the function.
-
-    Raises:
-        Last exception if all retries fail.
-    """
-    last_exception: Exception | None = None
-
-    for attempt in range(max_retries + 1):
-        try:
-            return func()
-        except Exception as e:
-            last_exception = e
-            if attempt < max_retries:
-                delay = base_backoff * (2**attempt)
-                logger.warning(
-                    "Fetch attempt %d failed, retrying in %.1fs: %s",
-                    attempt + 1,
-                    delay,
-                    e,
-                )
-                time.sleep(delay)
-            continue
-
-    msg = f"Data fetch failed after {max_retries + 1} attempts"
-    raise DataFetchError(msg) from last_exception
 
 
 def _find_nearest_index(array: np.ndarray, value: float) -> int:
@@ -165,11 +122,17 @@ class ECMWFFetcher(WeatherFetcher):
         def _do_fetch() -> WeatherData:
             return self._fetch_and_parse(location, step)
 
-        return _retry_with_backoff(
-            _do_fetch,
-            max_retries=self._config.retry_max,
-            base_backoff=self._config.retry_backoff,
-        )
+        try:
+            return retry_with_backoff(
+                _do_fetch,
+                max_retries=self._config.retry_max,
+                base_backoff=self._config.retry_backoff,
+            )
+        except (InvalidStepError, DataParseError):
+            raise
+        except Exception as e:
+            msg = f"Data fetch failed after {self._config.retry_max + 1} attempts"
+            raise DataFetchError(msg) from e
 
     def _fetch_and_parse(self, location: Location, step: int) -> WeatherData:
         """Fetch GRIB data and parse at location.
@@ -183,23 +146,25 @@ class ECMWFFetcher(WeatherFetcher):
         """
         client = Client(source=self._config.ecmwf_source)
 
-        with NamedTemporaryFile(suffix=".grib2", delete=False) as tmp:
-            target_path = Path(tmp.name)
-
+        _, target_path = tempfile.mkstemp(suffix=".grib2")
         try:
             result = client.retrieve(
                 step=step,
                 type="fc",
                 param=list(ECMWF_PARAMS),
-                target=str(target_path),
+                target=target_path,
             )
 
             logger.debug("Downloaded GRIB file: %s", target_path)
 
-            return self._parse_grib(target_path, location, result.datetime, step)
+            return self._parse_grib(
+                Path(target_path), location, result.datetime, step
+            )
         finally:
-            if target_path.exists():
-                target_path.unlink()
+            try:
+                Path(target_path).unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def _parse_grib(
         self,
@@ -222,8 +187,6 @@ class ECMWFFetcher(WeatherFetcher):
         Raises:
             DataParseError: If GRIB file cannot be parsed.
         """
-        from datetime import datetime
-
         try:
             with xr.open_dataset(str(grib_path), engine="cfgrib") as ds:
                 lat_values = ds["latitude"].values
@@ -235,6 +198,8 @@ class ECMWFFetcher(WeatherFetcher):
                 temp_k = float(ds[ECMWF_TEMP_VAR].values[lat_idx, lon_idx])
                 dew_k = float(ds[ECMWF_DEW_VAR].values[lat_idx, lon_idx])
 
+        except DataParseError:
+            raise
         except Exception as e:
             msg = f"Failed to parse GRIB file: {e}"
             raise DataParseError(msg) from e
@@ -264,30 +229,6 @@ class ECMWFFetcher(WeatherFetcher):
         )
 
 
-_default_fetcher: ECMWFFetcher | None = None
-
-
-def get_fetcher(config: Config | None = None) -> ECMWFFetcher:
-    """Get or create the default weather fetcher.
-
-    Args:
-        config: Optional configuration override.
-
-    Returns:
-        ECMWFFetcher instance.
-    """
-    global _default_fetcher
-    if _default_fetcher is None or config is not None:
-        _default_fetcher = ECMWFFetcher(config=config)
-    return _default_fetcher
-
-
-def reset_fetcher() -> None:
-    """Reset the default fetcher. Useful for testing."""
-    global _default_fetcher
-    _default_fetcher = None
-
-
 def fetch_weather_data(
     location: Location,
     step: int = 0,
@@ -307,4 +248,4 @@ def fetch_weather_data(
         InvalidStepError: If step is not valid.
         DataFetchError: If data cannot be fetched.
     """
-    return get_fetcher(config).fetch(location, step=step)
+    return ECMWFFetcher(config=config).fetch(location, step=step)

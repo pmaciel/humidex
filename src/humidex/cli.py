@@ -8,6 +8,7 @@ import sys
 import click
 
 import humidex
+from humidex.models import Location
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -49,7 +50,13 @@ def _handle_error(error: Exception, place: str) -> None:
 
 
 @click.command()
-@click.argument("place")
+@click.argument("place", required=False, default=None)
+@click.option("--lat", type=float, default=None, help="Latitude in decimal degrees.")
+@click.option("--lon", type=float, default=None, help="Longitude in decimal degrees.")
+@click.option(
+    "--name", type=str, default=None,
+    help="Location name (used with --lat/--lon).",
+)
 @click.option(
     "--step",
     "-s",
@@ -65,20 +72,40 @@ def _handle_error(error: Exception, place: str) -> None:
     help="Output as JSON.",
 )
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output.")
-def main(place: str, step: int, as_json: bool, verbose: bool) -> None:
+def main(
+    place: str | None,
+    lat: float | None,
+    lon: float | None,
+    name: str | None,
+    step: int,
+    as_json: bool,
+    verbose: bool,
+) -> None:
     """Get the humidex for a location using ECMWF open data.
 
-    PLACE is a human-readable location name (e.g., "Bangkok", "London, UK").
+    Provide either PLACE (a human-readable location name) or both
+    --lat and --lon (decimal degrees).
 
     Examples:
         humidex "Bangkok"
+        humidex --lat 13.75 --lon 100.50 --name "Bangkok"
         humidex "London" --step 12
         humidex "Singapore" --json
     """
+    if place is None and (lat is None or lon is None):
+        click.echo("Error: Provide either PLACE or both --lat and --lon", err=True)
+        sys.exit(1)
+
     _setup_logging(verbose)
 
     try:
-        result = humidex.get_humidex(place, step=step)
+        if lat is not None and lon is not None:
+            location_name = name or f"({lat:.4f}, {lon:.4f})"
+            location = Location(name=location_name, latitude=lat, longitude=lon)
+            result = humidex.get_humidex(location, step=step)
+        else:
+            assert place is not None
+            result = humidex.get_humidex(place, step=step)
     except (
         humidex.PlaceNotFoundError,
         humidex.GeocodingError,
@@ -86,7 +113,7 @@ def main(place: str, step: int, as_json: bool, verbose: bool) -> None:
         humidex.DataFetchError,
         humidex.CalculationError,
     ) as e:
-        _handle_error(e, place)
+        _handle_error(e, place or f"({lat}, {lon})")
         sys.exit(1)
 
     if as_json:

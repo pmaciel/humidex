@@ -69,6 +69,9 @@ def calculate_humidex(
         humidex_c = thermofeel.kelvin_to_celsius(humidex_k)
         humidex_c = round(float(humidex_c), 1)
 
+    except (TypeError, ValueError) as e:
+        msg = f"Failed to calculate humidex: invalid input — {e}"
+        raise CalculationError(msg) from e
     except Exception as e:
         msg = f"Failed to calculate humidex: {e}"
         raise CalculationError(msg) from e

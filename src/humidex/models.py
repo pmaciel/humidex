@@ -4,6 +4,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TypedDict
+
+
+class HumidexResultDict(TypedDict):
+    """TypedDict for humidex result JSON serialization."""
+
+    location: str
+    latitude: float
+    longitude: float
+    humidex: float
+    comfort: str
+    temperature_c: float
+    dewpoint_c: float
+    forecast_step: int
+    valid_time: str
 
 
 @dataclass(frozen=True)
@@ -91,7 +106,7 @@ class HumidexResult:
             f"{self.location.name}: Humidex {self.humidex:.1f}\u00b0C - {self.comfort}"
         )
 
-    def to_dict(self) -> dict[str, float | str | int]:
+    def to_dict(self) -> HumidexResultDict:
         """Convert to dictionary for JSON serialization.
 
         Returns:

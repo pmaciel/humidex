@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from humidex.models import HumidexResult, Location, WeatherData
+from humidex.models import HumidexResult, HumidexResultDict, Location, WeatherData
 
 
 class TestLocation:
@@ -135,6 +135,14 @@ class TestHumidexResult:
         assert "dewpoint_c" in d
         assert "forecast_step" in d
         assert "valid_time" in d
+
+    def test_to_dict_typed(self, hot_result: HumidexResult) -> None:
+        d: HumidexResultDict = hot_result.to_dict()
+        assert isinstance(d, dict)
+        assert isinstance(d["location"], str)
+        assert isinstance(d["latitude"], float)
+        assert isinstance(d["humidex"], float)
+        assert isinstance(d["comfort"], str)
 
     def test_frozen(self, hot_result: HumidexResult) -> None:
         with pytest.raises(Exception):

@@ -6,7 +6,7 @@ import pytest
 
 from humidex.config import Config
 from humidex.errors import GeocodingServiceError, PlaceNotFoundError
-from humidex.geocoder import NominatimGeocoder, geocode, reset_geocoder
+from humidex.geocoder import NominatimGeocoder, geocode
 from humidex.models import Location
 
 
@@ -71,15 +71,11 @@ class TestGeocodeConvenience:
         mock_location.latitude = 13.7563
         mock_location.longitude = 100.5018
 
-        with patch.object(
-            NominatimGeocoder,
-            "__init__",
-            return_value=None,
-        ):
-            with patch.object(
-                NominatimGeocoder, "geocode", return_value=mock_location
-            ):
-                reset_geocoder()
-                result = geocode("Bangkok", config=config)
+        mock_geocoder = MagicMock()
+        mock_geocoder.geocode.return_value = mock_location
+
+        with patch("humidex.geocoder.NominatimGeocoder", return_value=mock_geocoder):
+            result = geocode("Bangkok", config=config)
 
         assert result.latitude == pytest.approx(13.7563)
+        mock_geocoder.geocode.assert_called_once_with("Bangkok")

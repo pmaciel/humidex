@@ -1,5 +1,6 @@
 """Tests for fetcher module."""
 
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -87,8 +88,6 @@ class TestECMWFFetcher:
     def test_fetch_success(self, config: Config) -> None:
         mock_client = MagicMock()
         mock_result = MagicMock()
-        from datetime import datetime, timezone
-
         mock_result.datetime = datetime(2026, 5, 5, 12, 0, tzinfo=timezone.utc)
         mock_client.retrieve.return_value = mock_result
 

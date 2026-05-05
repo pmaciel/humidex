@@ -21,7 +21,7 @@ class Config:
         HUMIDEX_TEMP_MAX_C: Maximum valid temperature in Celsius.
     """
 
-    user_agent: str = "humidex/2.0.0"
+    user_agent: str = "humidex/3.0.0"
     geocoder_timeout: float = 10.0
     ecmwf_source: str = "aws"
     ecmwf_timeout: float = 60.0
@@ -61,28 +61,6 @@ class Config:
         )
 
 
-_DEFAULT_CONFIG: Config | None = None
-
-
 def get_config() -> Config:
-    """Get the default configuration, loading from environment if needed."""
-    global _DEFAULT_CONFIG
-    if _DEFAULT_CONFIG is None:
-        _DEFAULT_CONFIG = Config.from_env()
-    return _DEFAULT_CONFIG
-
-
-def set_config(config: Config) -> None:
-    """Override the default configuration.
-
-    Args:
-        config: Configuration to use as default.
-    """
-    global _DEFAULT_CONFIG
-    _DEFAULT_CONFIG = config
-
-
-def reset_config() -> None:
-    """Reset configuration to default. Useful for testing."""
-    global _DEFAULT_CONFIG
-    _DEFAULT_CONFIG = None
+    """Get a fresh default configuration, loading from environment."""
+    return Config.from_env()

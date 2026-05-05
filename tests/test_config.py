@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from humidex.config import Config, get_config, reset_config, set_config
+from humidex.config import Config
 
 
 class TestConfig:
@@ -13,7 +13,7 @@ class TestConfig:
 
     def test_defaults(self) -> None:
         config = Config()
-        assert config.user_agent == "humidex/2.0.0"
+        assert config.user_agent == "humidex/3.0.0"
         assert config.geocoder_timeout == pytest.approx(10.0)
         assert config.ecmwf_source == "aws"
         assert config.retry_max == 3
@@ -50,7 +50,7 @@ class TestConfigFromEnv:
             for key in keys:
                 os.environ.pop(key, None)
             config = Config.from_env()
-        assert config.user_agent == "humidex/2.0.0"
+        assert config.user_agent == "humidex/3.0.0"
 
     def test_from_env_overrides(self) -> None:
         with patch.dict(
@@ -65,22 +65,3 @@ class TestConfigFromEnv:
         assert config.user_agent == "test-agent/1.0"
         assert config.retry_max == 5
         assert config.ecmwf_source == "google"
-
-
-class TestConfigManagement:
-    """Tests for global config management."""
-
-    def test_get_config_default(self) -> None:
-        reset_config()
-        config = get_config()
-        assert isinstance(config, Config)
-
-    def test_set_config(self) -> None:
-        custom = Config(retry_max=10)
-        set_config(custom)
-        assert get_config().retry_max == 10
-
-    def test_reset_config(self) -> None:
-        set_config(Config(retry_max=10))
-        reset_config()
-        assert get_config().retry_max == 3

@@ -32,6 +32,25 @@ class TestGetHumidex:
 
         assert result == mock_result
 
+    def test_with_location_object(self) -> None:
+        mock_location = Location(name="Test", latitude=10.0, longitude=20.0)
+        mock_weather = MagicMock()
+        mock_result = MagicMock()
+
+        with pytest.MonkeyPatch.context() as mp:
+            import humidex
+
+            mp.setattr(humidex, "fetch_weather_data", lambda *a, **kw: mock_weather)
+            mp.setattr(
+                humidex,
+                "calculate_humidex",
+                lambda *a, **kw: mock_result,
+            )
+
+            result = get_humidex(mock_location)
+
+        assert result == mock_result
+
     def test_custom_geocoder(self) -> None:
         mock_geocoder = MagicMock()
         mock_location = Location(name="Custom", latitude=10.0, longitude=20.0)

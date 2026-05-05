@@ -6,19 +6,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from humidex.config import Config, reset_config
-from humidex.fetcher import reset_fetcher
-from humidex.geocoder import reset_geocoder
+from humidex.config import Config
 from humidex.models import HumidexResult, Location, WeatherData
-
-
-@pytest.fixture(autouse=True)
-def reset_state() -> None:
-    """Reset all singleton state after each test."""
-    yield
-    reset_config()
-    reset_geocoder()
-    reset_fetcher()
 
 
 @pytest.fixture

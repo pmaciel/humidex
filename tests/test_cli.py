@@ -51,7 +51,7 @@ class TestCLI:
         call_args = {}
 
         def mock_get_humidex(
-            place: str, step: int = 0, **kw: object
+            place: object, step: int = 0, **kw: object
         ) -> HumidexResult:
             call_args["place"] = place
             call_args["step"] = step
@@ -107,3 +107,54 @@ class TestCLI:
         assert result.exit_code == 0
         assert "humidex" in result.output.lower()
         assert "PLACE" in result.output
+
+
+class TestCLICoordinates:
+    """Tests for CLI coordinate input."""
+
+    def test_lat_lon_input(self, hot_result: "HumidexResult") -> None:
+        runner = CliRunner()
+        call_args = {}
+
+        def mock_get_humidex(
+            place: object, step: int = 0, **kw: object
+        ) -> HumidexResult:
+            call_args["place"] = place
+            return hot_result
+
+        with pytest.MonkeyPatch.context() as mp:
+            import humidex.cli
+
+            mp.setattr(humidex.cli.humidex, "get_humidex", mock_get_humidex)
+            result = runner.invoke(main, ["--lat", "13.75", "--lon", "100.50"])
+
+        assert result.exit_code == 0
+        assert isinstance(call_args["place"], object)
+
+    def test_missing_both_args(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(main, [])
+
+        assert result.exit_code == 1
+        assert "Provide either PLACE or both --lat and --lon" in result.output
+
+    def test_lat_lon_verbose(self, hot_result: "HumidexResult") -> None:
+        runner = CliRunner()
+        call_args = {}
+
+        def mock_get_humidex(
+            place: object, step: int = 0, **kw: object
+        ) -> HumidexResult:
+            call_args["place"] = place
+            return hot_result
+
+        with pytest.MonkeyPatch.context() as mp:
+            import humidex.cli
+
+            mp.setattr(humidex.cli.humidex, "get_humidex", mock_get_humidex)
+            result = runner.invoke(
+                main, ["--lat", "13.75", "--lon", "100.50", "-v"]
+            )
+
+        assert result.exit_code == 0
+        assert "Coordinates:" in result.output
