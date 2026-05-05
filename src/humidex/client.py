@@ -31,16 +31,8 @@ class HumidexClient:
             fetcher: Weather fetcher. Creates ECMWFFetcher if not provided.
         """
         self._config = config or get_config()
-
-        if geocoder is not None:
-            self._geocoder = geocoder
-        else:
-            self._geocoder = NominatimGeocoder(config=self._config)
-
-        if fetcher is not None:
-            self._fetcher = fetcher
-        else:
-            self._fetcher = ECMWFFetcher(config=self._config)
+        self._geocoder = geocoder or NominatimGeocoder(config=self._config)
+        self._fetcher = fetcher or ECMWFFetcher(config=self._config)
 
     def get_humidex(
         self,

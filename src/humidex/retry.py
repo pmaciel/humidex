@@ -61,6 +61,5 @@ def retry_with_backoff(
                 time.sleep(delay)
             continue
 
-    if last_exception is None:
-        raise RuntimeError(f"Operation failed after {max_retries + 1} attempts")
+    assert last_exception is not None  # loop always sets this before exit
     raise last_exception

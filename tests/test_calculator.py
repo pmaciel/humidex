@@ -1,6 +1,7 @@
 """Tests for calculator module."""
 
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 import pytest
 
@@ -86,14 +87,10 @@ class TestCalculateHumidex:
             forecast_step=0,
             valid_time=datetime.now(tz=timezone.utc),
         )
-        with pytest.MonkeyPatch.context() as mp:
-            import humidex.calculator
-
-            mp.setattr(
-                humidex.calculator.thermofeel,
-                "celsius_to_kelvin",
-                lambda _: "not a number",
-            )
+        with patch(
+            "humidex.calculator.thermofeel.celsius_to_kelvin",
+            return_value="not a number",
+        ):
             with pytest.raises(CalculationError, match="invalid input"):
                 calculate_humidex(location, weather)
 

@@ -130,12 +130,10 @@ def main(
             location_name = name or f"({lat:.4f}, {lon:.4f})"
             location = Location(name=location_name, latitude=lat, longitude=lon)
             result = humidex.get_humidex(location, step=step)
-        elif place is not None:
-            result = humidex.get_humidex(place, step=step)
         else:
-            # Unreachable due to validation above; satisfies type checker.
-            click.echo("Error: Provide either PLACE or both --lat and --lon", err=True)
-            sys.exit(1)
+            # Validation above guarantees `place` is set when lat/lon are not.
+            assert place is not None
+            result = humidex.get_humidex(place, step=step)
     except (
         humidex.PlaceNotFoundError,
         humidex.GeocodingError,

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import ClassVar, TypeVar
+
+T = TypeVar("T")
 
 
 @dataclass(frozen=True)
@@ -53,38 +56,33 @@ class Config:
     def from_env(cls) -> Config:
         """Create configuration from environment variables."""
 
-        def _parse_float(var_name: str, default: float) -> float:
-            raw = os.getenv(var_name)
-            if raw is None:
-                return default
-            try:
-                return float(raw)
-            except ValueError as exc:
-                msg = f"Invalid value for {var_name}: {raw!r}"
-                raise ValueError(msg) from exc
-
-        def _parse_int(var_name: str, default: int) -> int:
-            raw = os.getenv(var_name)
-            if raw is None:
-                return default
-            try:
-                return int(raw)
-            except ValueError as exc:
-                msg = f"Invalid value for {var_name}: {raw!r}"
-                raise ValueError(msg) from exc
-
         return cls(
             user_agent=os.getenv("HUMIDEX_USER_AGENT", cls.user_agent),
-            geocoder_timeout=_parse_float(
-                "HUMIDEX_GEOCODER_TIMEOUT", cls.geocoder_timeout
+            geocoder_timeout=_parse_env(
+                "HUMIDEX_GEOCODER_TIMEOUT", cls.geocoder_timeout, float
             ),
             ecmwf_source=os.getenv("HUMIDEX_ECMWF_SOURCE", cls.ecmwf_source),
-            ecmwf_timeout=_parse_float("HUMIDEX_ECMWF_TIMEOUT", cls.ecmwf_timeout),
-            retry_max=_parse_int("HUMIDEX_RETRY_MAX", cls.retry_max),
-            retry_backoff=_parse_float("HUMIDEX_RETRY_BACKOFF", cls.retry_backoff),
-            temp_min_c=_parse_float("HUMIDEX_TEMP_MIN_C", cls.temp_min_c),
-            temp_max_c=_parse_float("HUMIDEX_TEMP_MAX_C", cls.temp_max_c),
+            ecmwf_timeout=_parse_env(
+                "HUMIDEX_ECMWF_TIMEOUT", cls.ecmwf_timeout, float
+            ),
+            retry_max=_parse_env("HUMIDEX_RETRY_MAX", cls.retry_max, int),
+            retry_backoff=_parse_env(
+                "HUMIDEX_RETRY_BACKOFF", cls.retry_backoff, float
+            ),
+            temp_min_c=_parse_env("HUMIDEX_TEMP_MIN_C", cls.temp_min_c, float),
+            temp_max_c=_parse_env("HUMIDEX_TEMP_MAX_C", cls.temp_max_c, float),
         )
+
+
+def _parse_env(var_name: str, default: T, parser: Callable[[str], T]) -> T:
+    raw = os.getenv(var_name)
+    if raw is None:
+        return default
+    try:
+        return parser(raw)
+    except ValueError as exc:
+        msg = f"Invalid value for {var_name}: {raw!r}"
+        raise ValueError(msg) from exc
 
 
 def get_config() -> Config:

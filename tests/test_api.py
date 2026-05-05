@@ -16,7 +16,7 @@ def _make_fakes(
     fake_geocoder = MagicMock()
     fake_geocoder.geocode.return_value = location
     fake_fetcher = MagicMock()
-    fake_fetcher.fetch.return_value = weather if weather is not None else MagicMock()
+    fake_fetcher.fetch.return_value = weather or MagicMock()
     return fake_geocoder, fake_fetcher
 
 
