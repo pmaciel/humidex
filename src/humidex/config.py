@@ -21,7 +21,7 @@ class Config:
         HUMIDEX_TEMP_MAX_C: Maximum valid temperature in Celsius.
     """
 
-    user_agent: str = "humidex/3.0.0"
+    user_agent: str = "humidex/4.0.0"
     geocoder_timeout: float = 10.0
     ecmwf_source: str = "aws"
     ecmwf_timeout: float = 60.0
@@ -37,6 +37,12 @@ class Config:
             msg = (
                 f"Invalid ECMWF source: {self.ecmwf_source}. "
                 f"Valid sources: {', '.join(sorted(self._valid_sources))}"
+            )
+            raise ValueError(msg)
+        if self.temp_min_c > self.temp_max_c:
+            msg = (
+                f"temp_min_c ({self.temp_min_c}) must be <= "
+                f"temp_max_c ({self.temp_max_c})"
             )
             raise ValueError(msg)
 

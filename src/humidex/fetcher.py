@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -170,7 +170,7 @@ class ECMWFFetcher(WeatherFetcher):
         self,
         grib_path: Path,
         location: Location,
-        valid_time: object,
+        valid_time: datetime | None,
         step: int,
     ) -> WeatherData:
         """Parse GRIB file and extract values at nearest grid point.
@@ -219,7 +219,7 @@ class ECMWFFetcher(WeatherFetcher):
         if isinstance(valid_time, datetime):
             valid_dt = valid_time
         else:
-            valid_dt = datetime.now()
+            valid_dt = datetime.now(tz=timezone.utc)
 
         return WeatherData(
             temperature_c=round(temp_c, 1),

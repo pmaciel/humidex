@@ -82,6 +82,9 @@ class WeatherData:
         if self.forecast_step < 0:
             msg = f"Forecast step must be non-negative, got {self.forecast_step}"
             raise ValueError(msg)
+        if self.valid_time.tzinfo is None:
+            msg = "valid_time must be timezone-aware"
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True)

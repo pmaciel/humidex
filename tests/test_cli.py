@@ -4,7 +4,7 @@ import pytest
 from click.testing import CliRunner
 
 from humidex.cli import main
-from humidex.models import HumidexResult
+from humidex.models import HumidexResult, Location
 
 
 class TestCLI:
@@ -129,7 +129,7 @@ class TestCLICoordinates:
             result = runner.invoke(main, ["--lat", "13.75", "--lon", "100.50"])
 
         assert result.exit_code == 0
-        assert isinstance(call_args["place"], object)
+        assert isinstance(call_args["place"], Location)
 
     def test_missing_both_args(self) -> None:
         runner = CliRunner()

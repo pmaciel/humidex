@@ -114,6 +114,15 @@ class TestWeatherData:
         with pytest.raises(Exception):
             weather.temperature_c = 25.0
 
+    def test_naive_timezone_rejected(self) -> None:
+        with pytest.raises(ValueError, match="timezone-aware"):
+            WeatherData(
+                temperature_c=20.0,
+                dewpoint_c=10.0,
+                forecast_step=0,
+                valid_time=datetime(2026, 5, 5, 12, 0),
+            )
+
 
 class TestHumidexResult:
     """Tests for HumidexResult model."""

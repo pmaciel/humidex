@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "humidex"
-version = "3.0.0"
+version = "4.0.0"
 description = "Retrieve humidex values for any location using ECMWF open data"
 readme = "README.md"
 requires-python = ">=3.10"

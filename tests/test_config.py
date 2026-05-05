@@ -13,7 +13,7 @@ class TestConfig:
 
     def test_defaults(self) -> None:
         config = Config()
-        assert config.user_agent == "humidex/3.0.0"
+        assert config.user_agent == "humidex/4.0.0"
         assert config.geocoder_timeout == pytest.approx(10.0)
         assert config.ecmwf_source == "aws"
         assert config.retry_max == 3
@@ -33,6 +33,10 @@ class TestConfig:
         with pytest.raises(Exception):
             config.retry_max = 10
 
+    def test_temp_min_greater_than_max(self) -> None:
+        with pytest.raises(ValueError, match="temp_min_c"):
+            Config(temp_min_c=70.0, temp_max_c=-90.0)
+
 
 class TestConfigFromEnv:
     """Tests for environment variable configuration."""
@@ -50,7 +54,7 @@ class TestConfigFromEnv:
             for key in keys:
                 os.environ.pop(key, None)
             config = Config.from_env()
-        assert config.user_agent == "humidex/3.0.0"
+        assert config.user_agent == "humidex/4.0.0"
 
     def test_from_env_overrides(self) -> None:
         with patch.dict(

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import pytest
 
 from humidex.calculator import calculate_humidex, get_comfort_category
+from humidex.errors import CalculationError
 from humidex.models import HumidexResult, Location, WeatherData
 
 
@@ -82,3 +83,22 @@ class TestCalculateHumidex:
         )
         result = calculate_humidex(location, extreme_weather)
         assert isinstance(result, HumidexResult)
+
+    def test_calculation_error_type_error(self, location: Location) -> None:
+        """Test that TypeError from thermofeel is caught and wrapped."""
+        weather = WeatherData(
+            temperature_c=25.0,
+            dewpoint_c=15.0,
+            forecast_step=0,
+            valid_time=datetime.now(tz=timezone.utc),
+        )
+        with pytest.MonkeyPatch.context() as mp:
+            import humidex.calculator
+
+            mp.setattr(
+                humidex.calculator.thermofeel,
+                "celsius_to_kelvin",
+                lambda _: "not a number",
+            )
+            with pytest.raises(CalculationError, match="invalid input"):
+                calculate_humidex(location, weather)
